@@ -41,10 +41,29 @@ static TSharedPtr<FJsonObject> TextBlock(const FString& Role, const FString& Tex
 
 void UEarth4DChatClient::SendMessage(const FString& UserText)
 {
-	if (ApiKey.IsEmpty()) { OnError.Broadcast(TEXT("No API key configured.")); return; }
+	if (ApiKey.IsEmpty())
+	{
+		OnError.Broadcast(TEXT("No API key configured."));
+		OnNativeEvent.Broadcast(EEarth4DChatEvent::Error, TEXT("No API key configured."));
+		return;
+	}
+	if (bBusy) { OnNativeEvent.Broadcast(EEarth4DChatEvent::Error, TEXT("Still working on the previous request…")); return; }
 	Messages.Add(MakeShared<FJsonValueObject>(TextBlock(TEXT("user"), UserText)));
 	RoundsLeft = MaxToolRounds;
+	bBusy = true;
+	OnNativeEvent.Broadcast(EEarth4DChatEvent::Busy, FString());
 	PostTurn();
+}
+
+void UEarth4DChatClient::Finish(const FString& Error)
+{
+	bBusy = false;
+	if (!Error.IsEmpty())
+	{
+		OnError.Broadcast(Error);
+		OnNativeEvent.Broadcast(EEarth4DChatEvent::Error, Error);
+	}
+	OnNativeEvent.Broadcast(EEarth4DChatEvent::Idle, FString());
 }
 
 void UEarth4DChatClient::PostTurn()
@@ -79,19 +98,19 @@ void UEarth4DChatClient::PostTurn()
 
 void UEarth4DChatClient::OnResponse(FHttpRequestPtr Req, FHttpResponsePtr Resp, bool bOk)
 {
-	if (!bOk || !Resp.IsValid()) { OnError.Broadcast(TEXT("Network error")); return; }
+	if (!bOk || !Resp.IsValid()) { Finish(TEXT("Network error")); return; }
 	if (Resp->GetResponseCode() >= 300)
 	{
-		OnError.Broadcast(FString::Printf(TEXT("API %d: %s"), Resp->GetResponseCode(), *Resp->GetContentAsString()));
+		Finish(FString::Printf(TEXT("API %d: %s"), Resp->GetResponseCode(), *Resp->GetContentAsString()));
 		return;
 	}
 
 	TSharedPtr<FJsonObject> Root;
 	TSharedRef<TJsonReader<>> R = TJsonReaderFactory<>::Create(Resp->GetContentAsString());
-	if (!FJsonSerializer::Deserialize(R, Root) || !Root.IsValid()) { OnError.Broadcast(TEXT("Bad response")); return; }
+	if (!FJsonSerializer::Deserialize(R, Root) || !Root.IsValid()) { Finish(TEXT("Bad response")); return; }
 
 	const TArray<TSharedPtr<FJsonValue>>* Content;
-	if (!Root->TryGetArrayField(TEXT("content"), Content)) { OnError.Broadcast(TEXT("No content")); return; }
+	if (!Root->TryGetArrayField(TEXT("content"), Content)) { Finish(TEXT("No content")); return; }
 
 	// Record the assistant turn verbatim (needed so tool_result references resolve).
 	TSharedPtr<FJsonObject> AssistantMsg = MakeShared<FJsonObject>();
@@ -108,7 +127,9 @@ void UEarth4DChatClient::OnResponse(FHttpRequestPtr Req, FHttpResponsePtr Resp, 
 		const FString BType = B->GetStringField(TEXT("type"));
 		if (BType == TEXT("text"))
 		{
-			OnAssistantText.Broadcast(B->GetStringField(TEXT("text")));
+			const FString Text = B->GetStringField(TEXT("text"));
+			OnAssistantText.Broadcast(Text);
+			OnNativeEvent.Broadcast(EEarth4DChatEvent::AssistantText, Text);
 		}
 		else if (BType == TEXT("tool_use"))
 		{
@@ -116,7 +137,9 @@ void UEarth4DChatClient::OnResponse(FHttpRequestPtr Req, FHttpResponsePtr Resp, 
 			const FString Id = B->GetStringField(TEXT("id"));
 			const TSharedPtr<FJsonObject> Input = B->GetObjectField(TEXT("input"));
 			const FString Result = Earth4DTools::Dispatch(Name, Input, Subsystem);
-			OnToolRun.Broadcast(FString::Printf(TEXT("%s → %s"), *Name, *Result));
+			const FString Summary = FString::Printf(TEXT("%s → %s"), *Name, *Result);
+			OnToolRun.Broadcast(Summary);
+			OnNativeEvent.Broadcast(EEarth4DChatEvent::ToolRun, Summary);
 
 			TSharedPtr<FJsonObject> TR = MakeShared<FJsonObject>();
 			TR->SetStringField(TEXT("type"), TEXT("tool_result"));
@@ -135,5 +158,10 @@ void UEarth4DChatClient::OnResponse(FHttpRequestPtr Req, FHttpResponsePtr Resp, 
 		ToolMsg->SetArrayField(TEXT("content"), ToolResults);
 		Messages.Add(MakeShared<FJsonValueObject>(ToolMsg));
 		PostTurn();
+	}
+	else
+	{
+		// Final answer (or the tool-use loop hit its round cap): the turn is done.
+		Finish();
 	}
 }

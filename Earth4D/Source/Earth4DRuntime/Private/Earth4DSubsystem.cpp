@@ -3,7 +3,10 @@
 #include "Earth4DSchedule.h"
 #include "Earth4DScheduleEvaluator.h"
 #include "Earth4DSite.h"
+#include "Earth4DMaterialApplier.h"
+#include "Earth4DElementImport.h"
 #include "Components/SceneComponent.h"
+#include "Components/PrimitiveComponent.h"
 #include "EngineUtils.h"               // TActorIterator
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
@@ -19,6 +22,7 @@
 
 #if WITH_EDITOR
 #include "Editor.h"                    // GEditor
+#include "Selection.h"                 // USelection (IngestSelectedActors)
 #include "EditorViewportClient.h"
 #include "LevelEditorViewport.h"
 #endif
@@ -169,9 +173,46 @@ FEarth4DResult UEarth4DSubsystem::ResetElementEdit(const FString& ElementId)
 	return FEarth4DResult::Ok();
 }
 
+FEarth4DResult UEarth4DSubsystem::SetElementColor(const FString& ElementId, FLinearColor Color, bool bEnable)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	FEarth4DElement* El = Schedule->FindElement(ElementId);
+	if (!El) return FEarth4DResult::Fail(TEXT("Element not found"));
+	El->Edit.bHasColor = bEnable;
+	El->Edit.Color = Color;
+	EvaluateAndApply(CurrentDay); NotifyChanged();
+	return FEarth4DResult::Ok();
+}
+
+// ---- Selection ----
+FEarth4DResult UEarth4DSubsystem::SelectElements(const TArray<FString>& ElementIds, bool bAdd)
+{
+	if (!bAdd) SelectedElementIds.Reset();
+	for (const FString& Id : ElementIds) SelectedElementIds.AddUnique(Id);
+	NotifyChanged();
+	return FEarth4DResult::Ok(FString::Printf(TEXT("%d element(s) selected"), SelectedElementIds.Num()));
+}
+
+FEarth4DResult UEarth4DSubsystem::SelectByName(const FString& Query, bool bAdd)
+{
+	return SelectElements(FindElements(Query), bAdd);
+}
+
+void UEarth4DSubsystem::ClearSelection()
+{
+	SelectedElementIds.Reset();
+	NotifyChanged();
+}
+
 FString UEarth4DSubsystem::RegisterElement(USceneComponent* Component, const FString& DisplayName, const FString& Path)
 {
 	if (!Schedule || !Component) return FString();
+	// Idempotent: if this component is already a registered element, reuse its id so
+	// re-ingesting an actor/subtree never produces duplicates (preserves task links).
+	for (const FEarth4DElement& Existing : Schedule->Elements)
+	{
+		if (Existing.Component.Get() == Component) return Existing.Id;
+	}
 	FEarth4DElement El;
 	El.Id = NewId(TEXT("el"));
 	El.DisplayName = DisplayName;
@@ -186,6 +227,57 @@ FString UEarth4DSubsystem::RegisterElement(USceneComponent* Component, const FSt
 	Schedule->Elements.Add(El);
 	NotifyChanged();
 	return El.Id;
+}
+
+// ---- Import → elements ----
+FEarth4DResult UEarth4DSubsystem::IngestActor(AActor* Root, bool bRecurse)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	if (!Root) return FEarth4DResult::Fail(TEXT("No actor to ingest"));
+	const int32 N = UEarth4DElementImportLibrary::IngestActor(this, Root, bRecurse, FString());
+	EvaluateAndApply(CurrentDay); NotifyChanged();
+	return FEarth4DResult::Ok(FString::Printf(TEXT("Ingested %d element(s) from '%s'"), N, *Root->GetActorNameOrLabel()));
+}
+
+FEarth4DResult UEarth4DSubsystem::IngestActorByName(const FString& ActorName, bool bRecurse)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	UWorld* World = GetWorld();
+	if (!World) return FEarth4DResult::Fail(TEXT("No world"));
+	const FString Needle = ActorName.TrimStartAndEnd();
+	if (Needle.IsEmpty()) return FEarth4DResult::Fail(TEXT("Empty actor name"));
+
+	TArray<AActor*> Matches;
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		const FString Label = It->GetActorNameOrLabel();
+		if (Label.Equals(Needle, ESearchCase::IgnoreCase) || Label.Contains(Needle))
+		{
+			Matches.Add(*It);
+		}
+	}
+	if (Matches.Num() == 0) return FEarth4DResult::Fail(FString::Printf(TEXT("No actor matching '%s'"), *Needle));
+
+	const int32 N = UEarth4DElementImportLibrary::IngestActors(this, Matches, bRecurse);
+	EvaluateAndApply(CurrentDay); NotifyChanged();
+	return FEarth4DResult::Ok(FString::Printf(TEXT("Ingested %d element(s) from %d actor(s) matching '%s'"), N, Matches.Num(), *Needle));
+}
+
+FEarth4DResult UEarth4DSubsystem::IngestSelectedActors(bool bRecurse)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+#if WITH_EDITOR
+	if (GEditor)
+	{
+		TArray<AActor*> Selected;
+		GEditor->GetSelectedActors()->GetSelectedObjects<AActor>(Selected);
+		if (Selected.Num() == 0) return FEarth4DResult::Fail(TEXT("Nothing selected in the editor"));
+		const int32 N = UEarth4DElementImportLibrary::IngestActors(this, Selected, bRecurse);
+		EvaluateAndApply(CurrentDay); NotifyChanged();
+		return FEarth4DResult::Ok(FString::Printf(TEXT("Ingested %d element(s) from %d selected actor(s)"), N, Selected.Num()));
+	}
+#endif
+	return FEarth4DResult::Fail(TEXT("Selection ingest is only available in the editor"));
 }
 
 // ---- Stages ----
@@ -203,6 +295,24 @@ FEarth4DResult UEarth4DSubsystem::RemoveStage(const FString& StageId)
 	Schedule->Stages.RemoveAll([&](const FEarth4DStage& S) { return S.Id == StageId; });
 	for (FEarth4DTask& T : Schedule->Tasks) if (T.StageId == StageId) T.StageId.Empty();
 	NotifyChanged();
+	return FEarth4DResult::Ok();
+}
+
+FEarth4DResult UEarth4DSubsystem::RenameStage(const FString& StageId, const FString& NewName)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	FEarth4DStage* S = Schedule->FindStage(StageId);
+	if (!S) return FEarth4DResult::Fail(TEXT("Stage not found"));
+	S->Name = NewName; NotifyChanged();
+	return FEarth4DResult::Ok();
+}
+
+FEarth4DResult UEarth4DSubsystem::SetStageColor(const FString& StageId, FLinearColor Color)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	FEarth4DStage* S = Schedule->FindStage(StageId);
+	if (!S) return FEarth4DResult::Fail(TEXT("Stage not found"));
+	S->Color = Color; NotifyChanged();
 	return FEarth4DResult::Ok();
 }
 
@@ -371,12 +481,26 @@ void UEarth4DSubsystem::EvaluateAndApply(float Day)
 	TMap<FString, FEarth4DObjectState> States;
 	Earth4DScheduleEvaluator::Evaluate(*Schedule, Day, States);
 
+	// Shared material-apply config for this pass.
+	Earth4DMaterial::FApplyConfig MatCfg;
+	MatCfg.VisibilityOpacityCutoff = MaterialFadeVisibilityCutoff;
+
 	for (const FEarth4DElement& Elem : Schedule->Elements)
 	{
 		USceneComponent* Comp = Elem.Component.Get();
 		if (!Comp) continue;
 		const FEarth4DObjectState* St = States.Find(Elem.Id);
-		if (!St) { Comp->SetVisibility(true, true); Comp->SetRelativeTransform(Elem.BaseTransform); continue; }
+		if (!St)
+		{
+			Comp->SetVisibility(true, true);
+			Comp->SetRelativeTransform(Elem.BaseTransform);
+			if (bDriveMaterials)
+			{
+				if (UPrimitiveComponent* Prim = Cast<UPrimitiveComponent>(Comp))
+					Earth4DMaterial::ResetState(Prim, MatCfg);
+			}
+			continue;
+		}
 
 		Comp->SetVisibility(St->bVisible, true);
 		if (!St->bVisible) continue;
@@ -398,8 +522,19 @@ void UEarth4DSubsystem::EvaluateAndApply(float Day)
 		X.SetLocation(Elem.BaseTransform.GetLocation() + OffsetCm);
 		Comp->SetRelativeTransform(X);
 
-		// TODO (material pass): drive opacity (St->Opacity * Ed.Opacity), section
-		// clip (St->bHasClip) and glow (St->bHasGlow) via a dynamic material
-		// instance / masked material. Hook: ApplyElementMaterialState(Comp, *St, Ed).
+		// Material pass: drive opacity (fade), section-reveal clip plane and action
+		// glow via cached Dynamic Material Instances on the element's materials.
+		// St->Opacity already folds in Ed.Opacity (see the evaluator). The clip plane
+		// is converted from region-local ENU into the Cesium-georeferenced world here.
+		if (bDriveMaterials)
+		{
+			if (UPrimitiveComponent* Prim = Cast<UPrimitiveComponent>(Comp))
+			{
+				FVector ClipNormalWorld(0.f, 0.f, 1.f);
+				float ClipConstantWorld = 0.f;
+				Earth4DMaterial::ComputeWorldClip(*St, ActiveSite, ClipNormalWorld, ClipConstantWorld);
+				Earth4DMaterial::ApplyState(Prim, *St, Ed, ClipNormalWorld, ClipConstantWorld, MatCfg);
+			}
+		}
 	}
 }

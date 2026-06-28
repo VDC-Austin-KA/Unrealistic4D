@@ -25,6 +25,7 @@ public class Earth4DEditor : ModuleRules
 			"WorkspaceMenuStructure",
 			"EditorStyle",
 			"InputCore",
+			"AppFramework",  // OpenColorPicker (element colour override)
 			"HTTP",
 			"HTTPServer",   // local MCP endpoint
 			"Json",

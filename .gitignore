@@ -20,6 +20,11 @@ Saved/
 # Earth4DTemplate/Content/Construction_VOL1/ after cloning.
 Earth4DTemplate/Content/Construction_VOL1/
 
+# ---- Secrets (never commit) ----
+# Per-user Claude API key + tiles keys live here (written by UEarth4DSettings).
+Earth4DTemplate/Config/DefaultEarth4D.ini
+**/Config/DefaultEarth4D.ini
+
 # ---- OS / editor cruft ----
 .DS_Store
 Thumbs.db

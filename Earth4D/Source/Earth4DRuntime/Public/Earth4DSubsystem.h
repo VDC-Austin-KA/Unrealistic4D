@@ -42,6 +42,17 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Earth4D") bool bPlaying = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D") float DaysPerSecond = 1.5f;
 
+	/** The element ids the user/chat has selected; UI highlights them, chat scopes edits to them. */
+	UPROPERTY(BlueprintReadOnly, Category = "Earth4D") TArray<FString> SelectedElementIds;
+
+	/** Bumped on every mutation; native (Slate) UI polls this to refresh cheaply. */
+	UPROPERTY(BlueprintReadOnly, Category = "Earth4D") int32 Revision = 0;
+
+	/** EvaluateAndApply drives opacity/clip/glow onto element materials (Phase 3). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D|Render") bool bDriveMaterials = true;
+	/** When a material can't fade, hide the element below this opacity (safe fallback). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D|Render") float MaterialFadeVisibilityCutoff = 0.5f;
+
 	/** The active georeferenced site (Cesium georeference + Google tiles). May be null. */
 	UPROPERTY(BlueprintReadOnly, Category = "Earth4D|Site") TObjectPtr<AEarth4DSite> ActiveSite = nullptr;
 
@@ -95,12 +106,34 @@ public:
 	// ---- Elements ----
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Elements") FEarth4DResult SetElementEdit(const FString& ElementId, const FEarth4DObjectEdit& Edit);
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Elements") FEarth4DResult ResetElementEdit(const FString& ElementId);
-	/** Register a scene component as a schedulable element; returns its stable id. */
+	/** Set (or clear) an element's manual colour override. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Elements") FEarth4DResult SetElementColor(const FString& ElementId, FLinearColor Color, bool bEnable = true);
+
+	// ---- Selection (shared by UI + chat for scoping) ----
+	/** Replace the selection with these element ids (bAdd appends instead). */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Select") FEarth4DResult SelectElements(const TArray<FString>& ElementIds, bool bAdd = false);
+	/** Select every element whose name/path matches a substring (chat-friendly). */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Select") FEarth4DResult SelectByName(const FString& Query, bool bAdd = false);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Select") void ClearSelection();
+	/** Register a scene component as a schedulable element; returns its stable id.
+	 *  If the component is already registered, returns the existing id (no duplicate). */
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Elements") FString RegisterElement(USceneComponent* Component, const FString& DisplayName, const FString& Path);
+
+	// ---- Import → elements (Phase 3; mirrored as natural-language tools) ----
+	/** Ingest an actor (and, by default, its attached child-actor subtree) into the
+	 *  schedule: every mesh becomes an FEarth4DElement in region-local ENU, with
+	 *  imported Datasmith/Navisworks/Revit metadata copied onto it. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Elements") FEarth4DResult IngestActor(AActor* Root, bool bRecurse = true);
+	/** Find world actor(s) whose label/name matches and ingest them (chat-friendly). */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Elements") FEarth4DResult IngestActorByName(const FString& ActorName, bool bRecurse = true);
+	/** Ingest the current editor selection (authoring-time; no-op in a packaged build). */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Elements") FEarth4DResult IngestSelectedActors(bool bRecurse = true);
 
 	// ---- Stages ----
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Stages") FEarth4DResult AddStage(const FString& Name, FString& OutStageId);
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Stages") FEarth4DResult RemoveStage(const FString& StageId);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Stages") FEarth4DResult RenameStage(const FString& StageId, const FString& NewName);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Stages") FEarth4DResult SetStageColor(const FString& StageId, FLinearColor Color);
 
 	// ---- Query (read-only; grounds the chat) ----
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Query") FString GetScheduleSummary() const;
@@ -110,7 +143,7 @@ public:
 	void EvaluateAndApply(float Day);
 
 private:
-	void NotifyChanged() { OnScheduleChanged.Broadcast(); }
+	void NotifyChanged() { ++Revision; OnScheduleChanged.Broadcast(); }
 	static FString NewId(const TCHAR* Prefix);
 
 	/** Move the active view (PIE pawn / editor viewport) to look at a UE world point. */
