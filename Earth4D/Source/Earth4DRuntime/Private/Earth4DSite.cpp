@@ -22,8 +22,27 @@ namespace
 
 AEarth4DSite::AEarth4DSite()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	// Tick (in the editor viewport too) so the tiles backend stays spawned + streaming
+	// whenever the site is in a loaded level — not only during play.
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
 	RecomputeLocalFrame();
+}
+
+bool AEarth4DSite::ShouldTickIfViewportsOnly() const
+{
+	return true;
+}
+
+void AEarth4DSite::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	// Ensure the streaming backend exists (it self-starts once it has the site + a key).
+	// Only act while it is missing so we never force a per-frame re-origin/rebuild.
+	if (bStreamTiles && !NativeTiles)
+	{
+		EnsureTilesBackend(/*bAllowSpawn=*/true);
+	}
 }
 
 void AEarth4DSite::OnConstruction(const FTransform& Transform)
@@ -108,16 +127,18 @@ void AEarth4DSite::ConfigureTiles(bool bAllowSpawn)
 			for (TActorIterator<AEarth4DGoogleTiles> It(World); It; ++It) { NativeTiles = *It; break; }
 		if (!NativeTiles && bAllowSpawn)
 		{
-			FActorSpawnParameters P; P.Name = TEXT("Earth4DGoogleTiles");
+			FActorSpawnParameters P; P.ObjectFlags |= RF_Transient; // helper actor, never saved into the level
 			NativeTiles = World->SpawnActor<AEarth4DGoogleTiles>(AEarth4DGoogleTiles::StaticClass(), P);
 		}
 		if (NativeTiles)
 		{
 			NativeTiles->Site = this;
 			NativeTiles->ApiKey = Settings->GoogleMapTilesApiKey;
-			NativeTiles->BeginStreaming();
+			NativeTiles->CesiumIonToken = Settings->CesiumIonToken;
+			// Streaming auto-starts from the streamer's own tick (editor + game) once it has
+			// the site + a credential — so the basemap loads all the time, not just on play.
 		}
-		else if (Settings->GoogleMapTilesApiKey.IsEmpty())
+		else if (Settings->GoogleMapTilesApiKey.IsEmpty() && Settings->CesiumIonToken.IsEmpty())
 		{
 			UE_LOG(LogTemp, Warning, TEXT("[Earth4D] Cesium not installed and no Google Map Tiles API key set — no basemap will load. Set the key in Project Settings → Earth4D."));
 		}

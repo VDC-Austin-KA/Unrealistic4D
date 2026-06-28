@@ -94,6 +94,9 @@ public:
 	UPROPERTY(BlueprintReadWrite, Category = "Earth4D|Tiles") TObjectPtr<AEarth4DSite> Site = nullptr;
 	/** Google Map Tiles API key (provided by the site from per-user settings; never committed). */
 	UPROPERTY(BlueprintReadWrite, Category = "Earth4D|Tiles") FString ApiKey;
+	/** Cesium ion access token. If set (and no direct key), the streamer resolves the ion
+	 *  Google Photorealistic 3D Tiles asset endpoint to obtain the Google tileset URL/key. */
+	UPROPERTY(BlueprintReadWrite, Category = "Earth4D|Tiles") FString CesiumIonToken;
 
 	/** Target screen-space error in pixels. Lower = sharper tiles + more streaming. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D|Tiles", meta = (ClampMin = "1.0", ClampMax = "64.0")) float MaxScreenSpaceError = 16.0f;
@@ -142,7 +145,9 @@ private:
 	bool GetViewPoint(FVector& OutCamLocation, double& OutSsePixelsPerMeter) const;
 
 	// ---- Tileset / content fetch ----
+	void ResolveIonEndpointThenStream(); // Cesium ion token → Google tileset URL + key
 	void FetchRootTileset();
+	void FetchRootTilesetUrl(const FString& Url);
 	void FetchExternalTileset(TSharedPtr<Earth4DTiles::FTile> Tile);
 	void FetchContent(TSharedPtr<Earth4DTiles::FTile> Tile);
 	FString WithKeyAndSession(const FString& Uri) const;
@@ -161,6 +166,7 @@ private:
 
 	// ---- Decode + mesh build (GLTFCore / Draco) ----
 	void DecodeAndBuild(TSharedPtr<Earth4DTiles::FTile> Tile);
+	UTexture2D* DecodeImageToTexture(const uint8* Data, int32 NumBytes) const; // JPEG/PNG → texture
 	void EvictStale();
 	void SetTileVisible(Earth4DTiles::FTile& Tile, bool bVisible);
 	void DestroyTileMesh(Earth4DTiles::FTile& Tile);
