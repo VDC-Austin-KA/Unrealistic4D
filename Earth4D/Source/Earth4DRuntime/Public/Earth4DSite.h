@@ -46,8 +46,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D|Tiles") bool bStreamTiles = true;
 
 #if WITH_EARTH4D_CESIUM
-	UPROPERTY(BlueprintReadOnly, Category = "Earth4D|Tiles") TObjectPtr<ACesiumGeoreference> Georeference = nullptr;
-	UPROPERTY(BlueprintReadOnly, Category = "Earth4D|Tiles") TObjectPtr<ACesium3DTileset> GoogleTileset = nullptr;
+	// NOTE: deliberately NOT UPROPERTY — UHT forbids reflected members guarded by a
+	// custom preprocessor macro (only WITH_EDITORONLY_DATA is permitted). These are
+	// world-owned actors (the level keeps them alive) used only on the opt-in Cesium
+	// backend, so plain pointers are sufficient here.
+	ACesiumGeoreference* Georeference = nullptr;
+	ACesium3DTileset* GoogleTileset = nullptr;
 #endif
 	/** The Cesium-free Google tiles streamer (spawned when Cesium is unavailable). */
 	UPROPERTY(BlueprintReadOnly, Category = "Earth4D|Tiles") TObjectPtr<AEarth4DGoogleTiles> NativeTiles = nullptr;

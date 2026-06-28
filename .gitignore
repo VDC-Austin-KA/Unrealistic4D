@@ -29,3 +29,6 @@ Earth4DTemplate/Config/DefaultEarth4D.ini
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ---- Claude Code session exports ----
+*.txmmm

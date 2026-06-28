@@ -13,6 +13,7 @@ public class Earth4DEditor : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"Earth4DRuntime",
+			"HTTPServer",   // local MCP endpoint (FHttpRouteHandle is used in a public header)
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]
@@ -27,7 +28,6 @@ public class Earth4DEditor : ModuleRules
 			"InputCore",
 			"AppFramework",  // OpenColorPicker (element colour override)
 			"HTTP",
-			"HTTPServer",   // local MCP endpoint
 			"Json",
 			"JsonUtilities",
 		});

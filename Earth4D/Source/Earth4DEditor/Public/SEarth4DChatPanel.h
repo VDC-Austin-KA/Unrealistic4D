@@ -24,13 +24,13 @@ public:
 	void Construct(const FArguments& InArgs);
 	virtual ~SEarth4DChatPanel() override;
 
-private:
 	struct FChatLine
 	{
 		enum class ERole : uint8 { User, Assistant, Tool, Error, System } Role;
 		FString Text;
 	};
 
+private:
 	UEarth4DSubsystem* ResolveSub() const { return SubsystemGetter ? SubsystemGetter() : nullptr; }
 	void EnsureClient();
 

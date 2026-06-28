@@ -5,8 +5,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-
-class IHttpRouter;
+#include "IHttpRouter.h" // IHttpRouter + the FHttpRouteHandle typedef (can't be forward-declared)
 
 class FEarth4DMcpServer
 {
