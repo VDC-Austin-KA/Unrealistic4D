@@ -97,8 +97,10 @@ longer hard-depends on it:
   until Cesium supports the engine version the native path provides georeferencing +
   connectivity rather than streamed photoreal meshes.
 
-Detection is automatic (`Earth4DRuntime.Build.cs`); force it with the
-`EARTH4D_FORCE_CESIUM` / `EARTH4D_FORCE_NOCESIUM` environment variables.
+Cesium is **OFF by default** on UE 5.8 (it isn't released for 5.8 yet, and a stale
+install for an older engine would break the build). Opt in later — once Cesium ships
+for your engine version — by setting `EARTH4D_FORCE_CESIUM=1` before generating
+project files, then re-enabling the CesiumForUnreal plugin.
 
 ### Keys (never commit them)
 Set them in **Project Settings → Plugins → Earth4D** (saved to the gitignored
@@ -109,13 +111,20 @@ Set them in **Project Settings → Plugins → Earth4D** (saved to the gitignore
 ## Packaging the standalone app
 
 The template is a **C++ code project** (`Source/Earth4DTemplate`), so it packages
-into the standalone program the team runs:
+into the standalone program the team runs.
 
-1. Open `Earth4DTemplate/Earth4D.uproject` in UE 5.8 (let it compile).
-2. **Platforms → Windows → Package Project** (or `RunUAT BuildCookRun`).
-3. The packaged app ships `Earth4DRuntime` (4D core + command layer + in-app Claude
-   chat). The editor-only authoring panel + MCP server are not included in the
-   shipped build by design.
+**One-click (recommended):** run **`Scripts/Package.bat`** → outputs to `Dist/Windows`.
+Zip that folder; coworkers unzip and run `Earth4D.exe` (no Unreal needed).
+If the engine isn't auto-found, pass its path: `Package.bat "C:\Program Files\Epic Games\UE_5.8"`.
+(First, if the editor says *"Earth4D could not be compiled"*, run **`Scripts/Build.bat`**
+once — it compiles the plugin and prints the exact error if anything is wrong.)
+
+**Manual:** open `Earth4DTemplate/Earth4D.uproject` in UE 5.8, let it compile, then
+**Platforms → Windows → Package Project**.
+
+The packaged app ships `Earth4DRuntime` (4D core + command layer + in-app Claude
+chat). The editor-only authoring panel + MCP server are not included in the shipped
+build by design. Requires Visual Studio 2022 with the C++ game-dev workload.
 
 ## Natural-language control surfaces
 
