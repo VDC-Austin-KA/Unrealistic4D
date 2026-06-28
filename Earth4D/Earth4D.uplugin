@@ -28,13 +28,6 @@
 	],
 	"Plugins": [
 		{
-			"Name": "CesiumForUnreal",
-			"Enabled": true,
-			"Optional": true,
-			"Description": "Optional: streams Google Photorealistic 3D Tiles when installed. If absent (e.g. not yet released for this engine version), Earth4D falls back to its own WGS84 georeferencing + the native Google Map Tiles path.",
-			"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/product/cesium-for-unreal"
-		},
-		{
 			"Name": "DatasmithContent",
 			"Enabled": true
 		}

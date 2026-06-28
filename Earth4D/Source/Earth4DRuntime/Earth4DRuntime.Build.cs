@@ -1,6 +1,5 @@
 // Copyright Earth4D. Licensed for project use.
 using System;
-using System.IO;
 using UnrealBuildTool;
 
 public class Earth4DRuntime : ModuleRules
@@ -26,13 +25,14 @@ public class Earth4DRuntime : ModuleRules
 			"DatasmithContent", // imported metadata (UDatasmithAssetUserData) for elements / TimeLiner linking
 		});
 
-		// Cesium for Unreal is OPTIONAL. As of UE 5.8 the Cesium plugin may not yet be
-		// available; rather than hard-fail the build we auto-detect it. When present we
-		// stream Google Photorealistic 3D Tiles + use Cesium's georeference. When absent
-		// AEarth4DSite falls back to its own WGS84 ENU georeferencing (the 4D core works
-		// fully; the native Google Map Tiles path supplies tiles). Toggle/force via the
-		// EARTH4D_FORCE_CESIUM / EARTH4D_FORCE_NOCESIUM environment variables.
-		bool bHasCesium = DetectCesium(Target);
+		// Cesium for Unreal is OPTIONAL and OFF BY DEFAULT. As of UE 5.8 the Cesium
+		// plugin is not yet released, so building against it (or even auto-detecting a
+		// stale install for an older engine) breaks the build. We therefore default to
+		// the Cesium-free path — AEarth4DSite uses its own WGS84 ENU georeferencing and
+		// the native Google Map Tiles loader supplies the basemap. Opt IN explicitly,
+		// only once Cesium ships for your engine version, by setting the environment
+		// variable EARTH4D_FORCE_CESIUM=1 before generating project files / building.
+		bool bHasCesium = (Environment.GetEnvironmentVariable("EARTH4D_FORCE_CESIUM") == "1");
 		if (bHasCesium)
 		{
 			PrivateDependencyModuleNames.Add("CesiumRuntime");
@@ -55,31 +55,5 @@ public class Earth4DRuntime : ModuleRules
 				"LevelEditor",
 			});
 		}
-	}
-
-	/** Find the CesiumForUnreal plugin among engine + project plugins (or honour overrides). */
-	private static bool DetectCesium(ReadOnlyTargetRules Target)
-	{
-		if (Environment.GetEnvironmentVariable("EARTH4D_FORCE_NOCESIUM") == "1") return false;
-		if (Environment.GetEnvironmentVariable("EARTH4D_FORCE_CESIUM") == "1") return true;
-
-		try
-		{
-			var Roots = new System.Collections.Generic.List<string>();
-			Roots.Add(Path.Combine(Unreal.EngineDirectory.FullName, "Plugins"));
-			if (Target.ProjectFile != null)
-				Roots.Add(Path.Combine(Target.ProjectFile.Directory.FullName, "Plugins"));
-
-			foreach (string Root in Roots)
-			{
-				if (Directory.Exists(Root) &&
-					Directory.GetFiles(Root, "CesiumForUnreal.uplugin", SearchOption.AllDirectories).Length > 0)
-				{
-					return true;
-				}
-			}
-		}
-		catch (Exception) { /* detection is best-effort; default to the Cesium-free path */ }
-		return false;
 	}
 }
