@@ -13,6 +13,8 @@ setlocal EnableExtensions
 REM --- Locate the engine (arg 1 wins, else registry, else default guess) ---
 set "UE_ROOT=%~1"
 if "%UE_ROOT%"=="" for /f "tokens=2*" %%A in ('reg query "HKLM\SOFTWARE\EpicGames\Unreal Engine\5.8" /v InstalledDirectory 2^>nul') do set "UE_ROOT=%%B"
+REM Launcher installs (any drive, e.g. D:\EPIC\UE_5.8) are listed in LauncherInstalled.dat.
+if "%UE_ROOT%"=="" for /f "usebackq delims=" %%A in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$d='%ProgramData%\Epic\UnrealEngineLauncher\LauncherInstalled.dat'; if(Test-Path $d){(Get-Content $d -Raw ^| ConvertFrom-Json).InstallationList ^| ?{$_.AppName -like 'UE_5.8*'} ^| select -First 1 -ExpandProperty InstallLocation}"`) do set "UE_ROOT=%%A"
 if "%UE_ROOT%"=="" set "UE_ROOT=C:\Program Files\Epic Games\UE_5.8"
 
 set "UPROJECT=%~dp0..\Earth4DTemplate\Earth4D.uproject"
