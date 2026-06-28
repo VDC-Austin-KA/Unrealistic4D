@@ -173,6 +173,37 @@ FEarth4DResult UEarth4DSubsystem::ResetElementEdit(const FString& ElementId)
 	return FEarth4DResult::Ok();
 }
 
+FEarth4DResult UEarth4DSubsystem::SetElementColor(const FString& ElementId, FLinearColor Color, bool bEnable)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	FEarth4DElement* El = Schedule->FindElement(ElementId);
+	if (!El) return FEarth4DResult::Fail(TEXT("Element not found"));
+	El->Edit.bHasColor = bEnable;
+	El->Edit.Color = Color;
+	EvaluateAndApply(CurrentDay); NotifyChanged();
+	return FEarth4DResult::Ok();
+}
+
+// ---- Selection ----
+FEarth4DResult UEarth4DSubsystem::SelectElements(const TArray<FString>& ElementIds, bool bAdd)
+{
+	if (!bAdd) SelectedElementIds.Reset();
+	for (const FString& Id : ElementIds) SelectedElementIds.AddUnique(Id);
+	NotifyChanged();
+	return FEarth4DResult::Ok(FString::Printf(TEXT("%d element(s) selected"), SelectedElementIds.Num()));
+}
+
+FEarth4DResult UEarth4DSubsystem::SelectByName(const FString& Query, bool bAdd)
+{
+	return SelectElements(FindElements(Query), bAdd);
+}
+
+void UEarth4DSubsystem::ClearSelection()
+{
+	SelectedElementIds.Reset();
+	NotifyChanged();
+}
+
 FString UEarth4DSubsystem::RegisterElement(USceneComponent* Component, const FString& DisplayName, const FString& Path)
 {
 	if (!Schedule || !Component) return FString();
@@ -264,6 +295,24 @@ FEarth4DResult UEarth4DSubsystem::RemoveStage(const FString& StageId)
 	Schedule->Stages.RemoveAll([&](const FEarth4DStage& S) { return S.Id == StageId; });
 	for (FEarth4DTask& T : Schedule->Tasks) if (T.StageId == StageId) T.StageId.Empty();
 	NotifyChanged();
+	return FEarth4DResult::Ok();
+}
+
+FEarth4DResult UEarth4DSubsystem::RenameStage(const FString& StageId, const FString& NewName)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	FEarth4DStage* S = Schedule->FindStage(StageId);
+	if (!S) return FEarth4DResult::Fail(TEXT("Stage not found"));
+	S->Name = NewName; NotifyChanged();
+	return FEarth4DResult::Ok();
+}
+
+FEarth4DResult UEarth4DSubsystem::SetStageColor(const FString& StageId, FLinearColor Color)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	FEarth4DStage* S = Schedule->FindStage(StageId);
+	if (!S) return FEarth4DResult::Fail(TEXT("Stage not found"));
+	S->Color = Color; NotifyChanged();
 	return FEarth4DResult::Ok();
 }
 

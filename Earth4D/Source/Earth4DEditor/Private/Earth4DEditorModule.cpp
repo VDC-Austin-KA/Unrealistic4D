@@ -1,6 +1,7 @@
 // Copyright Earth4D. Licensed for project use.
 #include "Earth4DEditorModule.h"
 #include "Earth4DMcpServer.h"
+#include "Earth4DSettings.h"
 #include "SEarth4DGanttPanel.h"
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -23,7 +24,7 @@ void FEarth4DEditorModule::StartupModule()
 
 	// Start the local MCP server so Claude Desktop/Code can drive the editor.
 	McpServer = MakeShared<FEarth4DMcpServer>();
-	McpServer->Start(8765);
+	McpServer->Start((uint32)UEarth4DSettings::Get()->McpServerPort);
 }
 
 void FEarth4DEditorModule::ShutdownModule()

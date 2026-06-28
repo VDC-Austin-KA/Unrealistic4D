@@ -15,6 +15,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FEarth4DChatMessage, const FString&,
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FEarth4DChatToolRun, const FString&, ToolSummary);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FEarth4DChatError, const FString&, Error);
 
+/** Native event kinds for C++ (Slate) listeners that can't bind dynamic delegates. */
+enum class EEarth4DChatEvent : uint8 { AssistantText, ToolRun, Error, Busy, Idle };
+DECLARE_MULTICAST_DELEGATE_TwoParams(FEarth4DNativeChatEvent, EEarth4DChatEvent /*Kind*/, const FString& /*Text*/);
+
 UCLASS(BlueprintType)
 class EARTH4DRUNTIME_API UEarth4DChatClient : public UObject
 {
@@ -29,6 +33,12 @@ public:
 	UPROPERTY(BlueprintAssignable) FEarth4DChatMessage OnAssistantText;
 	UPROPERTY(BlueprintAssignable) FEarth4DChatToolRun OnToolRun;
 	UPROPERTY(BlueprintAssignable) FEarth4DChatError OnError;
+
+	/** Native (C++/Slate) event stream mirroring the Blueprint delegates above. */
+	FEarth4DNativeChatEvent OnNativeEvent;
+
+	/** True while a turn (or tool-use loop) is in flight. */
+	UPROPERTY(BlueprintReadOnly, Category = "Earth4D|Chat") bool bBusy = false;
 
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Chat") void Configure(const FString& InApiKey, UEarth4DSubsystem* InSubsystem);
 	/** Send a user instruction; drives the tool-use loop until a final answer. */
@@ -46,4 +56,6 @@ private:
 	void PostTurn();
 	void OnResponse(FHttpRequestPtr Req, FHttpResponsePtr Resp, bool bOk);
 	FString BuildSystemPrompt() const;
+	/** End the current turn: clears bBusy, reports an optional error, fires Idle. */
+	void Finish(const FString& Error = FString());
 };
