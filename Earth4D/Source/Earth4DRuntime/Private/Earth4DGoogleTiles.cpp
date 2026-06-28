@@ -10,6 +10,9 @@
 #include "ProceduralMeshComponent.h"
 #include "Components/SceneComponent.h"
 #include "Materials/MaterialInterface.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Engine/Texture2D.h"
+#include "ImageUtils.h"
 #include "Engine/Engine.h"
 #include "Kismet/GameplayStatics.h"
 #include "Camera/PlayerCameraManager.h"
@@ -113,23 +116,80 @@ bool AEarth4DGoogleTiles::ShouldTickIfViewportsOnly() const
 
 void AEarth4DGoogleTiles::BeginStreaming()
 {
-	if (ApiKey.IsEmpty())
+	if (ApiKey.IsEmpty() && CesiumIonToken.IsEmpty())
 	{
-		Report(false, TEXT("No Google Map Tiles API key set (Project Settings → Earth4D)."));
+		Report(false, TEXT("No tiles credential set: add a Google Map Tiles API key or a Cesium ion token (Project Settings → Earth4D)."));
 		return;
 	}
 	StopStreaming();
 
 	if (!TileMaterial)
 	{
-		// Neutral lit material; per-tile base-colour textures are a follow-up.
-		TileMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial"));
+		// Unlit textured material shipped with the plugin; falls back to the engine grid.
+		TileMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Earth4D/Materials/M_Earth4DTile.M_Earth4DTile"));
+		if (!TileMaterial)
+			TileMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial"));
 	}
 
 	bStreaming = true;
 	bConnected = false;
 	SessionToken.Reset();
-	FetchRootTileset();
+
+	// Prefer a direct Google key; otherwise resolve the Google tileset via the ion token.
+	if (!ApiKey.IsEmpty()) FetchRootTileset();
+	else ResolveIonEndpointThenStream();
+}
+
+void AEarth4DGoogleTiles::ResolveIonEndpointThenStream()
+{
+	// Cesium ion exposes Google Photorealistic 3D Tiles as asset 2275207; its endpoint
+	// returns options.url = a ready-to-stream Google root.json (with an embedded key).
+	const FString Url = FString::Printf(
+		TEXT("https://api.cesium.com/v1/assets/2275207/endpoint?access_token=%s"), *CesiumIonToken);
+	++InFlightRequests;
+	FHttpRequestRef Req = FHttpModule::Get().CreateRequest();
+	Req->SetURL(Url);
+	Req->SetVerb(TEXT("GET"));
+	Req->SetHeader(TEXT("Accept"), TEXT("application/json"));
+	TWeakObjectPtr<AEarth4DGoogleTiles> WeakThis(this);
+	Req->OnProcessRequestComplete().BindLambda(
+		[WeakThis](FHttpRequestPtr, FHttpResponsePtr Resp, bool bOk)
+		{
+			AEarth4DGoogleTiles* Self = WeakThis.Get();
+			if (!Self) return;
+			--Self->InFlightRequests;
+			if (!Self->bStreaming) return;
+			if (!bOk || !Resp.IsValid() || Resp->GetResponseCode() >= 300)
+			{
+				Self->Report(false, FString::Printf(TEXT("Cesium ion endpoint failed (HTTP %d). Check the ion token."),
+					Resp.IsValid() ? Resp->GetResponseCode() : 0));
+				return;
+			}
+			TSharedPtr<FJsonObject> Doc;
+			TSharedRef<TJsonReader<>> R = TJsonReaderFactory<>::Create(Resp->GetContentAsString());
+			const TSharedPtr<FJsonObject>* Options = nullptr;
+			FString TilesetUrl;
+			if (FJsonSerializer::Deserialize(R, Doc) && Doc.IsValid() &&
+				Doc->TryGetObjectField(TEXT("options"), Options))
+			{
+				(*Options)->TryGetStringField(TEXT("url"), TilesetUrl);
+			}
+			if (TilesetUrl.IsEmpty())
+			{
+				Self->Report(false, TEXT("Cesium ion endpoint returned no tileset URL for the Google asset."));
+				return;
+			}
+			// Capture the Google key embedded in the URL so child .json/.glb authenticate.
+			const int32 KeyIdx = TilesetUrl.Find(TEXT("key="));
+			if (KeyIdx != INDEX_NONE)
+			{
+				FString K = TilesetUrl.Mid(KeyIdx + 4);
+				int32 Amp; if (K.FindChar(TEXT('&'), Amp)) K = K.Left(Amp);
+				Self->ApiKey = K;
+			}
+			Self->FetchRootTilesetUrl(TilesetUrl);
+		});
+	Req->ProcessRequest();
 }
 
 void AEarth4DGoogleTiles::StopStreaming()
@@ -329,7 +389,12 @@ bool AEarth4DGoogleTiles::GetViewPoint(FVector& OutCamLocation, double& OutSsePi
 
 void AEarth4DGoogleTiles::FetchRootTileset()
 {
-	const FString Url = FString::Printf(TEXT("https://tile.googleapis.com/v1/3dtiles/root.json?key=%s"), *ApiKey);
+	FetchRootTilesetUrl(FString::Printf(TEXT("https://tile.googleapis.com/v1/3dtiles/root.json?key=%s"), *ApiKey));
+}
+
+void AEarth4DGoogleTiles::FetchRootTilesetUrl(const FString& Url)
+{
+	CaptureSessionToken(Url);
 	++InFlightRequests;
 	FHttpRequestRef Req = FHttpModule::Get().CreateRequest();
 	Req->SetURL(Url);
@@ -533,7 +598,7 @@ void AEarth4DGoogleTiles::DecodeAndBuild(TSharedPtr<FTile> Tile)
 
 	GLTF::FFileReader Reader;
 	GLTF::FAsset Asset;
-	Reader.ReadFile(TempPath, /*bLoadImageData=*/false, /*bLoadMetadata=*/false, Asset);
+	Reader.ReadFile(TempPath, /*bLoadImageData=*/true, /*bLoadMetadata=*/false, Asset);
 	PF.DeleteFile(*TempPath);
 
 	if (Asset.Meshes.Num() == 0)
@@ -592,7 +657,25 @@ void AEarth4DGoogleTiles::DecodeAndBuild(TSharedPtr<FTile> Tile)
 		const TArray<FProcMeshTangent> NoTangents;
 		const TArray<FColor> NoColors;
 		PMC->CreateMeshSection(SectionIndex, Positions, Tris, Normals, UV0, NoColors, NoTangents, /*bCreateCollision=*/false);
-		if (TileMaterial) PMC->SetMaterial(SectionIndex, TileMaterial);
+
+		// Apply the primitive's glTF base-colour image (the satellite texture) via a dynamic
+		// instance of the unlit tile material; fall back to the plain material otherwise.
+		UMaterialInterface* SectionMat = TileMaterial;
+		if (TileMaterial && Asset.Materials.IsValidIndex(Prim.MaterialIndex))
+		{
+			const int32 TexIdx = Asset.Materials[Prim.MaterialIndex].BaseColor.TextureIndex;
+			if (Asset.Textures.IsValidIndex(TexIdx))
+			{
+				const GLTF::FImage& Img = Asset.Textures[TexIdx].Source;
+				if (UTexture2D* Tex = DecodeImageToTexture(Img.Data, (int32)Img.DataByteLength))
+				{
+					UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(TileMaterial, this);
+					MID->SetTextureParameterValue(TEXT("BaseColorTex"), Tex);
+					SectionMat = MID;
+				}
+			}
+		}
+		if (SectionMat) PMC->SetMaterial(SectionIndex, SectionMat);
 		++SectionIndex;
 	};
 
@@ -623,6 +706,22 @@ void AEarth4DGoogleTiles::DecodeAndBuild(TSharedPtr<FTile> Tile)
 
 	Tile->Mesh = PMC;
 	Tile->State = EState::Ready;
+}
+
+UTexture2D* AEarth4DGoogleTiles::DecodeImageToTexture(const uint8* Data, int32 NumBytes) const
+{
+	if (!Data || NumBytes <= 0) return nullptr;
+	// FImageUtils decodes the encoded JPEG/PNG buffer (glTF keeps tile imagery encoded).
+	UTexture2D* Tex = FImageUtils::ImportBufferAsTexture2D(TArrayView64<const uint8>(Data, NumBytes));
+	if (Tex)
+	{
+		Tex->SRGB = true;
+		Tex->Filter = TextureFilter::TF_Trilinear;
+		Tex->AddressX = TextureAddress::TA_Clamp;
+		Tex->AddressY = TextureAddress::TA_Clamp;
+		Tex->UpdateResource();
+	}
+	return Tex;
 }
 
 // ---- Visibility / eviction -------------------------------------------------

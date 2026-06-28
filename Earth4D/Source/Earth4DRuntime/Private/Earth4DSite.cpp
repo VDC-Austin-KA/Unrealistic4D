@@ -115,9 +115,10 @@ void AEarth4DSite::ConfigureTiles(bool bAllowSpawn)
 		{
 			NativeTiles->Site = this;
 			NativeTiles->ApiKey = Settings->GoogleMapTilesApiKey;
+			NativeTiles->CesiumIonToken = Settings->CesiumIonToken;
 			NativeTiles->BeginStreaming();
 		}
-		else if (Settings->GoogleMapTilesApiKey.IsEmpty())
+		else if (Settings->GoogleMapTilesApiKey.IsEmpty() && Settings->CesiumIonToken.IsEmpty())
 		{
 			UE_LOG(LogTemp, Warning, TEXT("[Earth4D] Cesium not installed and no Google Map Tiles API key set — no basemap will load. Set the key in Project Settings → Earth4D."));
 		}
