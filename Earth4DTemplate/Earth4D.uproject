@@ -12,6 +12,10 @@
 	],
 	"Plugins": [
 		{
+			"Name": "Earth4D",
+			"Enabled": true
+		},
+		{
 			"Name": "DatasmithContent",
 			"Enabled": true
 		},
@@ -94,6 +98,6 @@
 		}
 	],
 	"AdditionalPluginDirectories": [
-		"../Earth4D"
+		".."
 	]
 }

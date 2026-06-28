@@ -55,7 +55,7 @@ void AEarth4DAnnotation::ApplyDay(float Day, const AEarth4DSite* Site)
 
 	if (bFaceCamera)
 	{
-		FVector CamLoc; FRotator CamRot; bool bHaveCam = false;
+		FVector CamLoc; bool bHaveCam = false;
 		if (UWorld* W = GetWorld())
 			if (APlayerController* PC = UGameplayStatics::GetPlayerController(W, 0))
 				if (PC->PlayerCameraManager) { CamLoc = PC->PlayerCameraManager->GetCameraLocation(); bHaveCam = true; }
