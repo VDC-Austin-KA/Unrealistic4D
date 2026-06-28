@@ -30,6 +30,14 @@
 		{
 			"Name": "DatasmithContent",
 			"Enabled": true
+		},
+		{
+			"Name": "Interchange",
+			"Enabled": true
+		},
+		{
+			"Name": "ProceduralMeshComponent",
+			"Enabled": true
 		}
 	]
 }

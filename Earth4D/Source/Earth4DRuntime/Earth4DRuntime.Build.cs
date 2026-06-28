@@ -23,6 +23,10 @@ public class Earth4DRuntime : ModuleRules
 			"Projects",
 			"DeveloperSettings", // UEarth4DSettings (per-user API/tiles keys)
 			"DatasmithContent", // imported metadata (UDatasmithAssetUserData) for elements / TimeLiner linking
+			// ---- Native Google Photorealistic 3D Tiles (Cesium-free streaming) ----
+			"GLTFCore",                 // engine glTF parser; decodes Draco-compressed primitives
+			"ProceduralMeshComponent",  // builds the streamed tile geometry at runtime
+			"RenderCore",               // RHI vertex formats used by the procedural mesh
 		});
 
 		// Cesium for Unreal is OPTIONAL and OFF BY DEFAULT. As of UE 5.8 the Cesium

@@ -180,6 +180,24 @@ void AEarth4DSite::EcefToGeodetic(const FVector& Ecef, double& OutLatDeg, double
 	OutHeightM = Height;
 }
 
+FVector AEarth4DSite::EcefMetersToUnreal(const FVector& EcefMeters) const
+{
+	// ECEF delta → region-local ENU metres → Unreal cm. The region origin maps to UE
+	// (0,0,0) in the Cesium-free frame, matching GeodeticToUnreal()/GetRegionOriginUnreal().
+	const FVector D = EcefMeters - OriginEcef;
+	const FVector Enu(FVector::DotProduct(AxisEast, D), FVector::DotProduct(AxisNorth, D), FVector::DotProduct(AxisUp, D));
+	return EnuToUnrealLocal(Enu);
+}
+
+FVector AEarth4DSite::EcefDirectionToUnreal(const FVector& EcefDir) const
+{
+	// Linear part of EcefMetersToUnreal (no origin shift, no cm scale): rotate ECEF → ENU,
+	// flip north to Unreal -Y, normalise. The ENU→Unreal map mirrors one axis, so this is
+	// orientation-flipping — tile triangle winding is reversed to match (see the streamer).
+	const FVector Enu(FVector::DotProduct(AxisEast, EcefDir), FVector::DotProduct(AxisNorth, EcefDir), FVector::DotProduct(AxisUp, EcefDir));
+	return FVector(Enu.X, -Enu.Y, Enu.Z).GetSafeNormal();
+}
+
 void AEarth4DSite::RecomputeLocalFrame()
 {
 	OriginEcef = GeodeticToEcef(OriginLatitude, OriginLongitude, OriginHeight);
