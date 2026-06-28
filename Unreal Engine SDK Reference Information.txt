@@ -1,0 +1,92 @@
+To build a professional 4D Sequencing Plugin in Unreal Engine 5.6 using Datasmith data from Navisworks, Revit, and SketchUp, you must bridge the gap between BIM Metadata and the Sequencer API.
+
+A 4D sequence maps construction schedule dates to the Unreal Engine timeline. The most important technical areas and references are detailed below.
+
+1. Core Architecture & API References
+Your plugin will essentially act as a translator between UDatasmithAssetUserData (Source BIM Data) and UMovieScene (Sequencer Logic).
+
+Datasmith Metadata Access: Refer to the DatasmithContent module. Metadata from Navisworks/Revit is stored as a flat list of string key-value pairs within the UDatasmithAssetUserData component attached to imported Actors.
+Sequencer Scripting: Refer to the MovieScene and LevelSequence modules. You will need the Sequencer C++ API to programmatically generate UMovieSceneTrack and UMovieSceneSection objects based on the dates found in the metadata.
+Visual Dataprep: Reference the Datasmith DataPrep documentation. DataPrep allows you to automate the “cleaning” of metadata (e.g., converting varying Revit date formats into a unified tag) before your sequencing logic runs.
+2. Implementation Checklist
+To prepare the tool, you must handle the following technical hurdles:
+
+Metadata Flattening Logic: Datasmith flattens Revit/IFC categories. You must create a mapping system to identify which “Key” in the metadata represents the “Start Date” or “Construction Phase.”
+Date-to-Frame Conversion: BIM software uses timestamps; Unreal uses FFrameNumber. You will need a utility to map a Project Start Date (e.g., Jan 1st) to Frame 0.
+Recursive Parent Searching: In Navisworks, construction data is often stored on a parent “Group” node rather than the individual Static Mesh Actor. Your code must be able to crawl up the actor hierarchy to find the relevant metadata.
+3. C++ Technical Scaffold
+To automate the timeline, your plugin will utilize the following logic pattern:
+
+Module Dependencies (.Build.cs)
+Ensure these are included to access Datasmith and Sequencer internals:
+
+C#
+CODE BELOW LINE
+____________________________________________________________________________________________________________________________
+PublicDependencyModuleNames.AddRange(new string[] { 
+    "LevelSequence", 
+    "MovieScene", 
+    "MovieSceneTracks", 
+    "DatasmithContent", 
+    "EditorScriptingUtilities" 
+});
+____________________________________________________________________________________________________________________________
+CODE END
+Extracting Construction Data
+This snippet demonstrates how to pull the construction phase from an imported Revit or Navisworks actor:
+
+C++
+CODE BELOW LINE
+____________________________________________________________________________________________________________________________
+#include "DatasmithAssetUserData.h"
+ 
+FString GetConstructionPhase(AActor* TargetActor)
+{
+    if (UDatasmithAssetUserData* BIMData = TargetActor->FindComponentByClass<UDatasmithAssetUserData>())
+    {
+        // "Phase Created" is a common Revit key; Navisworks may use "Construction Start"
+        if (BIMData->MetaData.Contains("Phase Created"))
+        {
+            return BIMData->MetaData["Phase Created"];
+        }
+    }
+    return FString();
+}
+____________________________________________________________________________________________________________________________
+CODE END
+Programmatic Sequencer Generation
+Once you have the metadata, you must bind the actor to a visibility track to simulate the “construction” (elimination of invisibility).
+
+C++
+CODE BELOW LINE
+____________________________________________________________________________________________________________________________
+#include "LevelSequence.h"
+#include "Tracks/MovieSceneVisibilityTrack.h"
+#include "Sections/MovieSceneBoolSection.h"
+ 
+void AddActorTo4DSchedule(ULevelSequence* Sequence, AActor* Actor, int32 StartFrame)
+{
+    UMovieScene* MovieScene = Sequence->GetMovieScene();
+    FGuid BindingGuid = Sequence->AddPossessable(Actor);
+ 
+    // Add a Visibility Track to toggle the actor 'on' when construction begins
+    UMovieSceneTrack* VisTrack = MovieScene->AddTrack(UMovieSceneVisibilityTrack::StaticClass(), BindingGuid);
+    UMovieSceneBoolSection* VisSection = Cast<UMovieSceneBoolSection>(VisTrack->CreateNewSection());
+    
+    // Set the range: Invisible until StartFrame, Visible thereafter
+    VisSection->SetRange(TRange<FFrameNumber>::Inclusive(StartFrame, 50000));
+    VisTrack->AddSection(*VisSection);
+}
+____________________________________________________________________________________________________________________________
+CODE END
+4. Performance & Best Practices
+Avoid Hard References: Use Blueprint Interfaces if you need to trigger VFX (like dust or cranes) when an actor is “constructed” on the timeline.
+Handle Large Scenes: Navisworks files often contain thousands of objects. When generating the sequence, use a ScopedTransaction to prevent editor lag and allow for a single “Undo” operation if the schedule import fails.
+Eliminate Redundant Keys: Instead of keying every frame, use MovieScene Sections. This keeps the Level Sequence asset lightweight and easy to edit manually if the BIM schedule changes.
+5. Recommended Tools for Debugging
+Unreal Insights: Use this to profile the import speed if you are processing thousands of BIM objects simultaneously.
+Log DatasmithImport: Enable verbose logging in the Output Log to see the exact string names of metadata keys coming from Revit vs. SketchUp, as they often differ slightly.
+
+OTHER GOOD REFERENCE CONTENT TO RESEARCH :
+https://dev.epicgames.com/documentation/unreal-engine/datasmith-export-sdk-guidelines
+https://dev.epicgames.com/documentation/unreal-engine/exporting-datasmith-content-from-navisworks-to-unreal-engine

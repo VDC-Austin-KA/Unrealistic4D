@@ -1,0 +1,26 @@
+# ---- Unreal Engine generated (never commit) ----
+Binaries/
+Build/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+*.VC.db
+*.VC.opendb
+*.opensdf
+*.sdf
+*.sln
+*.suo
+*.xcodeproj/
+*.xcworkspace/
+
+# ---- Marketplace asset pack ----
+# Construction_VOL1 is an Epic Marketplace pack (~586 MB, contains a >100 MB file).
+# Not redistributed here; install it from the Epic Marketplace into
+# Earth4DTemplate/Content/Construction_VOL1/ after cloning.
+Earth4DTemplate/Content/Construction_VOL1/
+
+# ---- OS / editor cruft ----
+.DS_Store
+Thumbs.db
+desktop.ini
