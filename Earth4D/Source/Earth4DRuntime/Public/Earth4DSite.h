@@ -82,6 +82,17 @@ public:
 	static FVector GeodeticToEcef(double LatDeg, double LonDeg, double HeightM);
 	static void EcefToGeodetic(const FVector& Ecef, double& OutLatDeg, double& OutLonDeg, double& OutHeightM);
 
+	/**
+	 * Map an absolute ECEF position (metres, WGS84) into Unreal world centimetres via the
+	 * region's local-tangent frame. The native Google 3D Tiles streamer uses this to place
+	 * decoded tile geometry (tile vertices resolve to ECEF, then land in the region frame).
+	 */
+	FVector EcefMetersToUnreal(const FVector& EcefMeters) const;
+	/** Rotate an ECEF direction (e.g. a tile vertex normal) into Unreal space (unit length). */
+	FVector EcefDirectionToUnreal(const FVector& EcefDir) const;
+	/** ECEF origin (metres) of the current region frame — the tile streamer culls against it. */
+	FVector GetOriginEcef() const { return OriginEcef; }
+
 private:
 	void ConfigureTiles(bool bAllowSpawn);
 	/** Recompute OriginEcef + the ENU basis at the region origin (the Cesium-free frame). */
