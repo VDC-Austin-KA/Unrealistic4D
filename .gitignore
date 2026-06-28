@@ -32,3 +32,11 @@ desktop.ini
 
 # ---- Claude Code session exports ----
 *.txmmm
+
+# ---- Plugin packaging output (UE "Package Plugin" / Fab submission) ----
+# These HostProject wrappers embed a *copy* of the plugin; if left in the tree
+# they give UBT duplicate "Earth4D" plugins and break the editor build
+# ("Earth4D could not be compiled"). Regenerable — never commit.
+Earth4D/Source/Earth4D/
+**/HostProject/
+**/HostProject */
