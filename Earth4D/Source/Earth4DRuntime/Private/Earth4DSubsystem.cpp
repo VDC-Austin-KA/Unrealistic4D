@@ -5,6 +5,11 @@
 #include "Earth4DSite.h"
 #include "Earth4DMaterialApplier.h"
 #include "Earth4DElementImport.h"
+#include "Earth4DDayDriven.h"
+#include "Earth4DAnnotation.h"
+#include "Earth4DExcavation.h"
+#include "Earth4DVehicle.h"
+#include "Earth4DCameraDirector.h"
 #include "Components/SceneComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "EngineUtils.h"               // TActorIterator
@@ -414,6 +419,40 @@ void UEarth4DSubsystem::MoveViewToUnreal(const FVector& TargetUnrealCm, double V
 #endif
 }
 
+bool UEarth4DSubsystem::GetCurrentViewPose(FVector& OutLocation, FRotator& OutRotation) const
+{
+	UWorld* World = GetWorld();
+	if (World && World->IsGameWorld())
+	{
+		if (APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0))
+		{
+			if (PC->PlayerCameraManager)
+			{
+				OutLocation = PC->PlayerCameraManager->GetCameraLocation();
+				OutRotation = PC->PlayerCameraManager->GetCameraRotation();
+				return true;
+			}
+			OutLocation = PC->GetFocalLocation();
+			OutRotation = PC->GetControlRotation();
+			return true;
+		}
+	}
+#if WITH_EDITOR
+	if (GEditor)
+	{
+		if (FLevelEditorViewportClient* VC = GCurrentLevelEditingViewportClient
+			? GCurrentLevelEditingViewportClient
+			: (GEditor->GetLevelViewportClients().Num() > 0 ? GEditor->GetLevelViewportClients()[0] : nullptr))
+		{
+			OutLocation = VC->GetViewLocation();
+			OutRotation = VC->GetViewRotation();
+			return true;
+		}
+	}
+#endif
+	return false;
+}
+
 void UEarth4DSubsystem::GeocodeAndGoTo(const FString& Query, bool bSetRegionOrigin)
 {
 	if (Query.TrimStartAndEnd().IsEmpty())
@@ -537,4 +576,97 @@ void UEarth4DSubsystem::EvaluateAndApply(float Day)
 			}
 		}
 	}
+
+	// Drive the day-driven feature actors (vehicles / annotations / excavation / film)
+	// from the SAME day so the whole scene shares one clock. Prune dead weak refs.
+	for (int32 i = DayDrivenActors.Num() - 1; i >= 0; --i)
+	{
+		UObject* Obj = DayDrivenActors[i].Get();
+		if (!Obj) { DayDrivenActors.RemoveAtSwap(i); continue; }
+		if (IEarth4DDayDriven* DD = Cast<IEarth4DDayDriven>(Obj)) DD->ApplyDay(Day, ActiveSite);
+	}
+}
+
+// ---- Day-driven feature registry ----
+void UEarth4DSubsystem::RegisterDayDriven(UObject* Actor)
+{
+	if (Actor && Actor->GetClass()->ImplementsInterface(UEarth4DDayDriven::StaticClass()))
+		DayDrivenActors.AddUnique(Actor);
+}
+
+void UEarth4DSubsystem::UnregisterDayDriven(UObject* Actor)
+{
+	DayDrivenActors.RemoveAll([&](const TWeakObjectPtr<UObject>& W) { return W.Get() == Actor; });
+}
+
+// ---- Phase 6 command verbs ----
+FEarth4DResult UEarth4DSubsystem::AddAnnotation(const FString& Text, FVector EnuMeters, float AppearDay, float DisappearDay)
+{
+	UWorld* World = GetWorld();
+	if (!World) return FEarth4DResult::Fail(TEXT("No world"));
+	AEarth4DAnnotation* A = World->SpawnActor<AEarth4DAnnotation>();
+	if (!A) return FEarth4DResult::Fail(TEXT("Spawn failed"));
+	A->EnuMeters = EnuMeters;
+	A->AppearDay = AppearDay;
+	A->DisappearDay = DisappearDay;
+	A->SetText(Text);
+	A->ApplyDay(CurrentDay, ActiveSite);
+	return FEarth4DResult::Ok(FString::Printf(TEXT("Annotation '%s' placed."), *Text));
+}
+
+FEarth4DResult UEarth4DSubsystem::AddExcavation(FVector EnuMeters, FVector SizeMeters, float StartDay, float Days)
+{
+	UWorld* World = GetWorld();
+	if (!World) return FEarth4DResult::Fail(TEXT("No world"));
+	AEarth4DExcavation* E = World->SpawnActor<AEarth4DExcavation>();
+	if (!E) return FEarth4DResult::Fail(TEXT("Spawn failed"));
+	E->EnuMeters = EnuMeters; E->SizeMeters = SizeMeters; E->StartDay = StartDay; E->Days = FMath::Max(1.f, Days);
+	E->ApplyDay(CurrentDay, ActiveSite);
+	return FEarth4DResult::Ok(TEXT("Excavation added."));
+}
+
+FEarth4DResult UEarth4DSubsystem::AddVehicle(const FString& Name, FVector FromEnuMeters, FVector ToEnuMeters, float StartDay, float Days, bool bLoop)
+{
+	UWorld* World = GetWorld();
+	if (!World) return FEarth4DResult::Fail(TEXT("No world"));
+	AEarth4DVehicle* V = World->SpawnActor<AEarth4DVehicle>();
+	if (!V) return FEarth4DResult::Fail(TEXT("Spawn failed"));
+	if (!Name.IsEmpty()) V->SetActorLabel(Name);
+	V->RouteEnuMeters = { FromEnuMeters, ToEnuMeters };
+	V->StartDay = StartDay; V->Days = FMath::Max(1.f, Days); V->bLoop = bLoop;
+	V->RebuildRoute(ActiveSite);
+	V->ApplyDay(CurrentDay, ActiveSite);
+	return FEarth4DResult::Ok(FString::Printf(TEXT("Vehicle '%s' added."), *Name));
+}
+
+FEarth4DResult UEarth4DSubsystem::AddCameraKeyframe(float Day)
+{
+	UWorld* World = GetWorld();
+	if (!World) return FEarth4DResult::Fail(TEXT("No world"));
+	if (!FilmDirector)
+	{
+		FilmDirector = World->SpawnActor<AEarth4DCameraDirector>();
+		if (FilmDirector) RegisterDayDriven(FilmDirector);
+	}
+	if (!FilmDirector) return FEarth4DResult::Fail(TEXT("No film director"));
+
+	FVector Loc; FRotator Rot;
+	if (!GetCurrentViewPose(Loc, Rot)) return FEarth4DResult::Fail(TEXT("Could not read the current view"));
+	FilmDirector->AddKey(Day, Loc, Rot);
+	return FEarth4DResult::Ok(FString::Printf(TEXT("Camera keyframe at day %.1f (%d total)."), Day, FilmDirector->NumKeys()));
+}
+
+FEarth4DResult UEarth4DSubsystem::ClearFilm()
+{
+	if (FilmDirector) { FilmDirector->ClearKeys(); FilmDirector->SetDriveView(false); }
+	return FEarth4DResult::Ok(TEXT("Film cleared."));
+}
+
+FEarth4DResult UEarth4DSubsystem::PlayFilm()
+{
+	if (!FilmDirector || FilmDirector->NumKeys() < 1) return FEarth4DResult::Fail(TEXT("No camera keyframes — add some first."));
+	FilmDirector->SetDriveView(true);
+	float Mn, Mx; if (Schedule) { Schedule->GetBounds(Mn, Mx); SetCurrentDay(Mn); }
+	Play();
+	return FEarth4DResult::Ok(TEXT("Playing film."));
 }
