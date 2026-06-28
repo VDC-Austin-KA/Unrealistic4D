@@ -225,7 +225,15 @@ void AEarth4DGoogleTiles::BeginDestroy()
 void AEarth4DGoogleTiles::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	if (!bStreaming || !Root.IsValid() || !Site) return;
+
+	// Self-start: as soon as we have a site + a credential, begin streaming — in the editor
+	// viewport and at runtime alike. BeginStreaming() flips bStreaming so this runs once.
+	if (!bStreaming)
+	{
+		if (Site && (!ApiKey.IsEmpty() || !CesiumIonToken.IsEmpty())) BeginStreaming();
+		return;
+	}
+	if (!Root.IsValid() || !Site) return;
 
 	++FrameCounter;
 
