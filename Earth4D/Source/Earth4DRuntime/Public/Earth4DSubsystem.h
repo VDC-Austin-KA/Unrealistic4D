@@ -10,6 +10,7 @@
 
 class UEarth4DSchedule;
 class AEarth4DSite;
+class AEarth4DCameraDirector;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FEarth4DScheduleChanged);
 /** Result of an async location/geocode action (success, message, lat, lon). */
@@ -55,6 +56,12 @@ public:
 
 	/** The active georeferenced site (Cesium georeference + Google tiles). May be null. */
 	UPROPERTY(BlueprintReadOnly, Category = "Earth4D|Site") TObjectPtr<AEarth4DSite> ActiveSite = nullptr;
+
+	/** The film camera director (lazily spawned by AddCameraKeyframe / PlayFilm). */
+	UPROPERTY(BlueprintReadOnly, Category = "Earth4D|Film") TObjectPtr<AEarth4DCameraDirector> FilmDirector = nullptr;
+
+	/** Actors implementing IEarth4DDayDriven, ticked each EvaluateAndApply. */
+	UPROPERTY() TArray<TWeakObjectPtr<UObject>> DayDrivenActors;
 
 	/** Fires after any command mutates the schedule (UI/Gantt re-read on this). */
 	UPROPERTY(BlueprintAssignable, Category = "Earth4D") FEarth4DScheduleChanged OnScheduleChanged;
@@ -135,9 +142,37 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Stages") FEarth4DResult RenameStage(const FString& StageId, const FString& NewName);
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Stages") FEarth4DResult SetStageColor(const FString& StageId, FLinearColor Color);
 
+	// ---- Save / load + scenarios (project persistence) ----
+	/** Save the active schedule to JSON. Empty path → the default project file. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|IO") FEarth4DResult SaveProject(const FString& FilePath);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|IO") FEarth4DResult LoadProject(const FString& FilePath);
+	/** A scenario is a named schedule snapshot saved alongside the project (Saved/Earth4D/Scenarios). */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|IO") FEarth4DResult SaveScenario(const FString& Name);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|IO") FEarth4DResult LoadScenario(const FString& Name);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|IO") TArray<FString> ListScenarios() const;
+
 	// ---- Query (read-only; grounds the chat) ----
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Query") FString GetScheduleSummary() const;
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Query") TArray<FString> FindElements(const FString& Query) const;
+
+	// ---- Day-driven feature actors (vehicles / annotations / excavation / film) ----
+	/** Register an actor implementing IEarth4DDayDriven so it ticks with the schedule. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Features") void RegisterDayDriven(UObject* Actor);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Features") void UnregisterDayDriven(UObject* Actor);
+
+	// ---- Phase 6 command verbs (mirrored as natural-language tools) ----
+	/** Spawn a 3D-text annotation at a region-local ENU point (metres), appearing on a day. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Annotate") FEarth4DResult AddAnnotation(const FString& Text, FVector EnuMeters, float AppearDay = -1.f, float DisappearDay = -1.f);
+	/** Capture the current camera/viewport pose as a film keyframe at the given day. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Film") FEarth4DResult AddCameraKeyframe(float Day);
+	/** Clear all film keyframes. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Film") FEarth4DResult ClearFilm();
+	/** Play the schedule with the film camera driving the view (a recorded fly-through). */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Film") FEarth4DResult PlayFilm();
+	/** Spawn an excavation pit at a region-local ENU point that digs out over a day window. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Excavate") FEarth4DResult AddExcavation(FVector EnuMeters, FVector SizeMeters, float StartDay, float Days);
+	/** Spawn a vehicle that drives a straight route between two region-local ENU points over a window. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Vehicles") FEarth4DResult AddVehicle(const FString& Name, FVector FromEnuMeters, FVector ToEnuMeters, float StartDay, float Days, bool bLoop = false);
 
 	/** Evaluate the schedule at `Day` and write states onto the scene components. */
 	void EvaluateAndApply(float Day);
@@ -148,5 +183,7 @@ private:
 
 	/** Move the active view (PIE pawn / editor viewport) to look at a UE world point. */
 	void MoveViewToUnreal(const FVector& TargetUnrealCm, double ViewDistanceMeters);
+	/** Read the active view pose (PIE camera / editor viewport). Returns false if none. */
+	bool GetCurrentViewPose(FVector& OutLocation, FRotator& OutRotation) const;
 	void OnGeocodeResponse(FHttpRequestPtr Req, FHttpResponsePtr Resp, bool bOk, bool bSetRegionOrigin);
 };

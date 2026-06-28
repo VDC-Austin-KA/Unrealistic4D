@@ -75,8 +75,14 @@ void SEarth4DGanttPanel::Construct(const FArguments&)
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0)
 			[ SNew(SButton).Text(LOCTEXT("AddTask", "+ Task")).OnClicked(this, &SEarth4DGanttPanel::OnAddTaskClicked) ]
-			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 12, 0)
+			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0)
 			[ SNew(SButton).Text(LOCTEXT("AddStage", "+ Stage")).OnClicked(this, &SEarth4DGanttPanel::OnAddStageClicked) ]
+			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0)
+			[ SNew(SButton).Text(LOCTEXT("Save", "Save")).ToolTipText(LOCTEXT("SaveTip", "Save the project (Saved/Earth4D)."))
+				.OnClicked_Lambda([this]{ if (UEarth4DSubsystem* S = ResolveSubsystem()) S->SaveProject(FString()); return FReply::Handled(); }) ]
+			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 12, 0)
+			[ SNew(SButton).Text(LOCTEXT("Load", "Load"))
+				.OnClicked_Lambda([this]{ if (UEarth4DSubsystem* S = ResolveSubsystem()) S->LoadProject(FString()); return FReply::Handled(); }) ]
 			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0)
 			[ SNew(SButton).Text(this, &SEarth4DGanttPanel::GetPlayPauseLabel).OnClicked(this, &SEarth4DGanttPanel::OnPlayPause) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 4, 0)

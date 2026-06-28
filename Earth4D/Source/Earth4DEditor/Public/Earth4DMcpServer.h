@@ -18,7 +18,11 @@ public:
 private:
 	TSharedPtr<IHttpRouter> Router;
 	uint32 BoundPort = 0;
+	TArray<FHttpRouteHandle> RouteHandles;
 
 	// Resolves the active editor-world UEarth4DSubsystem to dispatch tools against.
 	class UEarth4DSubsystem* ResolveSubsystem() const;
+
+	/** Handle one MCP JSON-RPC 2.0 request body; returns the response JSON string. */
+	FString HandleJsonRpc(const FString& Body) const;
 };

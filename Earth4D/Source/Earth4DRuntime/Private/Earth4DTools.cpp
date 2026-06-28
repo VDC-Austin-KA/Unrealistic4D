@@ -64,7 +64,18 @@ namespace Earth4DTools
 {"name":"set_region_origin","description":"Re-origin the project region (and the Cesium georeference) to a geodetic point. Use this to set the construction site's real-world location by coordinates.","input_schema":{"type":"object","properties":{"lat":{"type":"number","description":"latitude degrees (WGS84)"},"lon":{"type":"number","description":"longitude degrees (WGS84)"},"height":{"type":"number","description":"ellipsoidal height in metres (optional)"}},"required":["lat","lon"]}},
 {"name":"fly_to","description":"Move the active camera to view a geodetic point on the Google 3D Tiles.","input_schema":{"type":"object","properties":{"lat":{"type":"number"},"lon":{"type":"number"},"height":{"type":"number"},"view_distance_m":{"type":"number","description":"how far back to frame from, metres"}},"required":["lat","lon"]}},
 {"name":"frame_region","description":"Move the active camera to frame the whole project region.","input_schema":{"type":"object","properties":{}}},
-{"name":"geocode_goto","description":"Search for a place by name (e.g. 'Sydney Opera House') and move the project region + camera there. Async; result is reported back when found.","input_schema":{"type":"object","properties":{"query":{"type":"string"},"set_region_origin":{"type":"boolean","description":"also re-origin the region to the found place (default true)"}},"required":["query"]}}
+{"name":"geocode_goto","description":"Search for a place by name (e.g. 'Sydney Opera House') and move the project region + camera there. Async; result is reported back when found.","input_schema":{"type":"object","properties":{"query":{"type":"string"},"set_region_origin":{"type":"boolean","description":"also re-origin the region to the found place (default true)"}},"required":["query"]}},
+{"name":"add_annotation","description":"Place a 3D-text annotation/callout on the site at a region-local ENU point (metres: east/north/up), optionally gated by a day window.","input_schema":{"type":"object","properties":{"text":{"type":"string"},"east":{"type":"number"},"north":{"type":"number"},"up":{"type":"number"},"appear_day":{"type":"number"},"disappear_day":{"type":"number"}},"required":["text"]}},
+{"name":"add_excavation","description":"Dig an excavation pit at a region-local ENU point that carves out over a day window. size_e/size_n are the footprint, depth is the dig depth (metres).","input_schema":{"type":"object","properties":{"east":{"type":"number"},"north":{"type":"number"},"up":{"type":"number"},"size_e":{"type":"number"},"size_n":{"type":"number"},"depth":{"type":"number"},"start":{"type":"number"},"days":{"type":"number"}},"required":["size_e","size_n","depth","days"]}},
+{"name":"add_vehicle","description":"Add a vehicle/equipment that drives a straight route between two region-local ENU points (metres) across a day window. Set loop=true for continuous traffic.","input_schema":{"type":"object","properties":{"name":{"type":"string"},"from_east":{"type":"number"},"from_north":{"type":"number"},"from_up":{"type":"number"},"to_east":{"type":"number"},"to_north":{"type":"number"},"to_up":{"type":"number"},"start":{"type":"number"},"days":{"type":"number"},"loop":{"type":"boolean"}},"required":["from_east","from_north","to_east","to_north","days"]}},
+{"name":"add_camera_keyframe","description":"Capture the current camera/viewport pose as a film keyframe at a construction day. Build a fly-through by adding several at different days.","input_schema":{"type":"object","properties":{"day":{"type":"number"}},"required":["day"]}},
+{"name":"play_film","description":"Play the schedule with the film camera driving the view along the captured keyframes (a recorded fly-through of the build).","input_schema":{"type":"object","properties":{}}},
+{"name":"clear_film","description":"Remove all camera keyframes.","input_schema":{"type":"object","properties":{}}},
+{"name":"save_project","description":"Save the current 4D project (tasks/stages/elements) to disk.","input_schema":{"type":"object","properties":{"path":{"type":"string","description":"optional file path; default project file if omitted"}}}},
+{"name":"load_project","description":"Load a 4D project from disk.","input_schema":{"type":"object","properties":{"path":{"type":"string"}}}},
+{"name":"save_scenario","description":"Save the current schedule as a named scenario (a what-if snapshot).","input_schema":{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}},
+{"name":"load_scenario","description":"Load a previously-saved named scenario.","input_schema":{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}},
+{"name":"list_scenarios","description":"List the saved scenario names.","input_schema":{"type":"object","properties":{}}}
 ])JSON");
 	}
 
@@ -140,6 +151,41 @@ namespace Earth4DTools
 		{
 			const bool bRecurse = Args->HasField(TEXT("recurse")) ? Args->GetBoolField(TEXT("recurse")) : true;
 			return Sub->IngestSelectedActors(bRecurse).Message;
+		}
+
+		auto Num = [&](const TCHAR* Key, double Default = 0.0) { return Args->HasField(Key) ? Args->GetNumberField(Key) : Default; };
+
+		if (ToolName == TEXT("add_annotation"))
+		{
+			const FVector Enu(Num(TEXT("east")), Num(TEXT("north")), Num(TEXT("up")));
+			return Sub->AddAnnotation(Args->GetStringField(TEXT("text")), Enu, Num(TEXT("appear_day"), -1.0), Num(TEXT("disappear_day"), -1.0)).Message;
+		}
+		if (ToolName == TEXT("add_excavation"))
+		{
+			const FVector Enu(Num(TEXT("east")), Num(TEXT("north")), Num(TEXT("up")));
+			const FVector Size(Num(TEXT("size_e"), 20.0), Num(TEXT("size_n"), 20.0), Num(TEXT("depth"), 5.0));
+			return Sub->AddExcavation(Enu, Size, Num(TEXT("start")), Num(TEXT("days"), 5.0)).Message;
+		}
+		if (ToolName == TEXT("add_vehicle"))
+		{
+			const FVector From(Num(TEXT("from_east")), Num(TEXT("from_north")), Num(TEXT("from_up")));
+			const FVector To(Num(TEXT("to_east")), Num(TEXT("to_north")), Num(TEXT("to_up")));
+			const bool bLoop = Args->HasField(TEXT("loop")) ? Args->GetBoolField(TEXT("loop")) : false;
+			const FString Name = Args->HasField(TEXT("name")) ? Args->GetStringField(TEXT("name")) : TEXT("Vehicle");
+			return Sub->AddVehicle(Name, From, To, Num(TEXT("start")), Num(TEXT("days"), 5.0), bLoop).Message;
+		}
+		if (ToolName == TEXT("add_camera_keyframe")) return Sub->AddCameraKeyframe(Num(TEXT("day"))).Message;
+		if (ToolName == TEXT("play_film")) return Sub->PlayFilm().Message;
+		if (ToolName == TEXT("clear_film")) return Sub->ClearFilm().Message;
+
+		if (ToolName == TEXT("save_project")) return Sub->SaveProject(Args->HasField(TEXT("path")) ? Args->GetStringField(TEXT("path")) : FString()).Message;
+		if (ToolName == TEXT("load_project")) return Sub->LoadProject(Args->HasField(TEXT("path")) ? Args->GetStringField(TEXT("path")) : FString()).Message;
+		if (ToolName == TEXT("save_scenario")) return Sub->SaveScenario(Args->GetStringField(TEXT("name"))).Message;
+		if (ToolName == TEXT("load_scenario")) return Sub->LoadScenario(Args->GetStringField(TEXT("name"))).Message;
+		if (ToolName == TEXT("list_scenarios"))
+		{
+			const TArray<FString> S = Sub->ListScenarios();
+			return S.Num() ? FString::Join(S, TEXT(", ")) : TEXT("(no scenarios)");
 		}
 
 		if (ToolName == TEXT("auto_assign_from_metadata"))

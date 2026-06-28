@@ -35,3 +35,23 @@ void UEarth4DSchedule::GetBounds(float& OutMin, float& OutMax) const
 	}
 	if (OutMax <= OutMin) OutMax = OutMin + 1.f;
 }
+
+FEarth4DScheduleData UEarth4DSchedule::CaptureData() const
+{
+	FEarth4DScheduleData D;
+	D.ProjectName = ProjectName;
+	D.ProjectStartIso = ProjectStartIso;
+	D.Stages = Stages;
+	D.Tasks = Tasks;
+	D.Elements = Elements;
+	return D;
+}
+
+void UEarth4DSchedule::RestoreData(const FEarth4DScheduleData& D)
+{
+	ProjectName = D.ProjectName;
+	ProjectStartIso = D.ProjectStartIso;
+	Stages = D.Stages;
+	Tasks = D.Tasks;
+	Elements = D.Elements;
+}
