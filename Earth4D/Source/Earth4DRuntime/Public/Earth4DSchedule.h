@@ -30,4 +30,8 @@ public:
 
 	/** [min,max] day range spanned by all tasks (stagger-aware on the end). */
 	void GetBounds(float& OutMin, float& OutMax) const;
+
+	/** Snapshot/restore the schedule data (for save/load + scenarios). */
+	FEarth4DScheduleData CaptureData() const;
+	void RestoreData(const FEarth4DScheduleData& Data);
 };

@@ -142,6 +142,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Stages") FEarth4DResult RenameStage(const FString& StageId, const FString& NewName);
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Stages") FEarth4DResult SetStageColor(const FString& StageId, FLinearColor Color);
 
+	// ---- Save / load + scenarios (project persistence) ----
+	/** Save the active schedule to JSON. Empty path → the default project file. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|IO") FEarth4DResult SaveProject(const FString& FilePath);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|IO") FEarth4DResult LoadProject(const FString& FilePath);
+	/** A scenario is a named schedule snapshot saved alongside the project (Saved/Earth4D/Scenarios). */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|IO") FEarth4DResult SaveScenario(const FString& Name);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|IO") FEarth4DResult LoadScenario(const FString& Name);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|IO") TArray<FString> ListScenarios() const;
+
 	// ---- Query (read-only; grounds the chat) ----
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Query") FString GetScheduleSummary() const;
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Query") TArray<FString> FindElements(const FString& Query) const;

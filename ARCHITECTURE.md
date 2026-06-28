@@ -207,12 +207,24 @@ user can say *"group everything by Phase into tasks"* in chat.
    uses the site for ENU→world placement; location verbs `SetRegionOrigin`,
    `FlyToLatLon`, `FrameRegion`, `GeocodeAndGoTo` (+ `set_region_origin`,
    `fly_to`, `frame_region`, `geocode_goto` tools). See §9.
-3. **Elements + apply loop.** Import → element registry; tick applies per-day
-   state to components (transform/visibility); a few core animation styles.
-4. **Gantt + element editor (UMG).** Author tasks/stages/edits natively.
-5. **In-app chat (5a).** Claude API tool-use loop end-to-end.
-6. **Excavation, vehicles, annotations, film** — port feature-by-feature.
-7. **Editor MCP server (5b)** + packaging the standalone app.
+3. **Elements + apply loop.** ✅ Import → element registry; tick applies per-day
+   state to components (transform/visibility); core animation styles + materials.
+4. **Gantt + element editor (UMG).** ✅ `SEarth4DTimeline` (draggable/resizable
+   bars, scrub, zoom), `SEarth4DElementsPanel` (tree + multi-edit), task inspector,
+   transport — all routed through the command layer.
+5. **In-app chat (5a).** ✅ `SEarth4DChatPanel` + `UEarth4DChatClient` tool-use
+   loop; per-user key in `UEarth4DSettings`.
+6. **Excavation, vehicles, annotations, film.** ✅ `IEarth4DDayDriven` actors
+   (`AEarth4DExcavation`, `AEarth4DVehicle`, `AEarth4DAnnotation`,
+   `AEarth4DCameraDirector`) ticked from the same day clock; verbs + tools.
+7. **Editor MCP server (5b) + packaging.** ✅ MCP JSON-RPC 2.0 server; save/load +
+   scenarios; the template is a C++ code project that packages to a standalone app.
+
+> **Cesium on UE 5.8.** Cesium for Unreal is now an **optional, auto-detected**
+> dependency (`WITH_EARTH4D_CESIUM`). Without it, `AEarth4DSite` provides its own
+> WGS84 ENU georeference and `AEarth4DGoogleTiles` talks to the Google Map Tiles API
+> directly (full native 3D-Tiles mesh rendering — Draco/glTF — remains a marked hook;
+> Cesium stays the photoreal-render path once it supports the engine version).
 
 ---
 

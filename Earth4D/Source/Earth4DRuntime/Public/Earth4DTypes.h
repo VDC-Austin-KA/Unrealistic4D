@@ -153,6 +153,19 @@ struct FEarth4DObjectState
 	UPROPERTY(BlueprintReadOnly) float GlowIntensity = 0.f;
 };
 
+/** Flat, serializable snapshot of a schedule (save/load + named scenarios). */
+USTRUCT(BlueprintType)
+struct FEarth4DScheduleData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FString ProjectName = TEXT("Untitled");
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FString ProjectStartIso;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FEarth4DStage> Stages;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FEarth4DTask> Tasks;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FEarth4DElement> Elements;
+};
+
 /** Small result returned by command-API verbs so chat/MCP can report back. */
 USTRUCT(BlueprintType)
 struct FEarth4DResult

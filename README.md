@@ -82,17 +82,59 @@ Example prompts once a project is loaded:
 - "Assign everything on level 3 to the slab-pour task and stagger it 0.5 days."
 - "Import the TimeLiner CSV and switch the demolition phase to a top-down wipe."
 
+## Cesium is optional on UE 5.8
+
+Cesium for Unreal may not yet ship for a brand-new engine version. The plugin no
+longer hard-depends on it:
+
+- **Cesium installed** → streams Google Photorealistic 3D Tiles via
+  `ACesium3DTileset` and uses Cesium's georeference (the full-fidelity path).
+- **Cesium absent** → `AEarth4DSite` computes its **own WGS84 ENU georeference**
+  (geodetic ↔ ECEF ↔ ENU ↔ Unreal), so element placement, `fly_to`, `frame_region`
+  and `geocode_goto` all work. `AEarth4DGoogleTiles` connects to the **Google Map
+  Tiles API** directly (key from settings) for the basemap; full native 3D-Tiles
+  *mesh* rendering needs a Draco/glTF runtime decoder (a clearly-marked hook), so
+  until Cesium supports the engine version the native path provides georeferencing +
+  connectivity rather than streamed photoreal meshes.
+
+Detection is automatic (`Earth4DRuntime.Build.cs`); force it with the
+`EARTH4D_FORCE_CESIUM` / `EARTH4D_FORCE_NOCESIUM` environment variables.
+
+### Keys (never commit them)
+Set them in **Project Settings → Plugins → Earth4D** (saved to the gitignored
+`Config/DefaultEarth4D.ini`) or type the Claude key into the in-app chat:
+- **Google Map Tiles API key** (basemap, both paths), and/or **Cesium ion token**.
+- **Anthropic API key** (in-app chat).
+
+## Packaging the standalone app
+
+The template is a **C++ code project** (`Source/Earth4DTemplate`), so it packages
+into the standalone program the team runs:
+
+1. Open `Earth4DTemplate/Earth4D.uproject` in UE 5.8 (let it compile).
+2. **Platforms → Windows → Package Project** (or `RunUAT BuildCookRun`).
+3. The packaged app ships `Earth4DRuntime` (4D core + command layer + in-app Claude
+   chat). The editor-only authoring panel + MCP server are not included in the
+   shipped build by design.
+
+## Natural-language control surfaces
+
+- **In-app chat** (runtime, packaged app): `SEarth4DChatPanel` → `UEarth4DChatClient`
+  → Claude Messages API tool-use loop over the command layer.
+- **Editor MCP server** (`FEarth4DMcpServer`): MCP JSON-RPC 2.0 at
+  `http://127.0.0.1:<port>/mcp` (`initialize` / `tools/list` / `tools/call`) plus
+  convenience `/tools` + `/call` routes, advertising the **same** `Earth4DTools`
+  list. If UE 5.8's first-party `ModelContextProtocol` host is used instead, it
+  registers the same tools — the command layer is the constant.
+
 ## Status & caveats
 
-- **Phase 1 scaffold** — data model, evaluator, command layer, tools, chat client,
-  Datasmith ingest, MCP server, and a stub authoring panel are in.
-- **Phase 2 (Cesium base)** — `AEarth4DSite` ties the region-local ENU frame to a
-  Cesium georeference + Google 3D Tiles; `SetRegionOrigin` / `FlyToLatLon` /
-  `FrameRegion` / `GeocodeAndGoTo` location verbs + tools are in (ARCHITECTURE §9).
-  The interactive Gantt/element-editor UMG, excavation/vehicles/film, and packaging
-  are the next phases (ARCHITECTURE §7).
-- **Not compiled here** — authored to UE 5.8 conventions but must be built in the
-  editor on your machine; resolve any module/include specifics there.
-- **Cesium** and a **Google tiles key/Cesium ion token** are required at runtime.
+- **Phases 1–7 implemented**: data model + evaluator + command layer; Cesium base +
+  WGS84 fallback; import → elements + material apply loop; the interactive Slate
+  Gantt + element editor; in-app Claude chat; excavation / vehicles / annotations /
+  film; MCP JSON-RPC server; save/load + scenarios; packageable template.
+- **Not compiled here** — authored to UE 5.8 conventions; build in-editor and
+  resolve any module/include specifics there. Cesium API call sites are marked
+  `VERIFY:` (names can drift by version).
 - Datasmith's richest metadata (and TimeLiner specifics) vary by exporter; the
   ingest is robust + configurable but verify against your real Navisworks export.

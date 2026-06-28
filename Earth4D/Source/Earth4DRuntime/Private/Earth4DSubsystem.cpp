@@ -24,6 +24,10 @@
 #include "Dom/JsonValue.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "JsonObjectConverter.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "HAL/FileManager.h"
 
 #if WITH_EDITOR
 #include "Editor.h"                    // GEditor
@@ -319,6 +323,67 @@ FEarth4DResult UEarth4DSubsystem::SetStageColor(const FString& StageId, FLinearC
 	if (!S) return FEarth4DResult::Fail(TEXT("Stage not found"));
 	S->Color = Color; NotifyChanged();
 	return FEarth4DResult::Ok();
+}
+
+// ---- Save / load + scenarios ----
+namespace
+{
+	FString Earth4DDir() { return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Earth4D")); }
+	FString DefaultProjectFile() { return FPaths::Combine(Earth4DDir(), TEXT("Project.e4d.json")); }
+	FString ScenarioDir() { return FPaths::Combine(Earth4DDir(), TEXT("Scenarios")); }
+	FString ScenarioFile(const FString& Name)
+	{
+		FString Safe = Name; Safe.ReplaceInline(TEXT("/"), TEXT("_")); Safe.ReplaceInline(TEXT("\\"), TEXT("_"));
+		return FPaths::Combine(ScenarioDir(), Safe + TEXT(".e4d.json"));
+	}
+}
+
+FEarth4DResult UEarth4DSubsystem::SaveProject(const FString& FilePath)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	const FString Path = FilePath.IsEmpty() ? DefaultProjectFile() : FilePath;
+	const FEarth4DScheduleData Data = Schedule->CaptureData();
+	FString Json;
+	if (!FJsonObjectConverter::UStructToJsonObjectString(Data, Json))
+		return FEarth4DResult::Fail(TEXT("Serialize failed"));
+	if (!FFileHelper::SaveStringToFile(Json, *Path))
+		return FEarth4DResult::Fail(FString::Printf(TEXT("Could not write %s"), *Path));
+	return FEarth4DResult::Ok(FString::Printf(TEXT("Saved project to %s"), *Path));
+}
+
+FEarth4DResult UEarth4DSubsystem::LoadProject(const FString& FilePath)
+{
+	const FString Path = FilePath.IsEmpty() ? DefaultProjectFile() : FilePath;
+	FString Json;
+	if (!FFileHelper::LoadFileToString(Json, *Path))
+		return FEarth4DResult::Fail(FString::Printf(TEXT("Could not read %s"), *Path));
+	FEarth4DScheduleData Data;
+	if (!FJsonObjectConverter::JsonObjectStringToUStruct(Json, &Data, 0, 0))
+		return FEarth4DResult::Fail(TEXT("Parse failed"));
+	GetOrCreateSchedule()->RestoreData(Data);
+	EvaluateAndApply(CurrentDay); NotifyChanged();
+	return FEarth4DResult::Ok(FString::Printf(TEXT("Loaded %d tasks / %d elements from %s"), Data.Tasks.Num(), Data.Elements.Num(), *Path));
+}
+
+FEarth4DResult UEarth4DSubsystem::SaveScenario(const FString& Name)
+{
+	if (Name.TrimStartAndEnd().IsEmpty()) return FEarth4DResult::Fail(TEXT("Scenario needs a name"));
+	return SaveProject(ScenarioFile(Name));
+}
+
+FEarth4DResult UEarth4DSubsystem::LoadScenario(const FString& Name)
+{
+	return LoadProject(ScenarioFile(Name));
+}
+
+TArray<FString> UEarth4DSubsystem::ListScenarios() const
+{
+	TArray<FString> Names;
+	IFileManager& FM = IFileManager::Get();
+	TArray<FString> Files;
+	FM.FindFiles(Files, *FPaths::Combine(ScenarioDir(), TEXT("*.e4d.json")), true, false);
+	for (FString& F : Files) Names.Add(FPaths::GetBaseFilename(F).Replace(TEXT(".e4d"), TEXT("")));
+	return Names;
 }
 
 // ---- Query ----
@@ -631,7 +696,9 @@ FEarth4DResult UEarth4DSubsystem::AddVehicle(const FString& Name, FVector FromEn
 	if (!World) return FEarth4DResult::Fail(TEXT("No world"));
 	AEarth4DVehicle* V = World->SpawnActor<AEarth4DVehicle>();
 	if (!V) return FEarth4DResult::Fail(TEXT("Spawn failed"));
+#if WITH_EDITOR
 	if (!Name.IsEmpty()) V->SetActorLabel(Name);
+#endif
 	V->RouteEnuMeters = { FromEnuMeters, ToEnuMeters };
 	V->StartDay = StartDay; V->Days = FMath::Max(1.f, Days); V->bLoop = bLoop;
 	V->RebuildRoute(ActiveSite);

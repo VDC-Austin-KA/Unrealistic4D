@@ -70,7 +70,12 @@ namespace Earth4DTools
 {"name":"add_vehicle","description":"Add a vehicle/equipment that drives a straight route between two region-local ENU points (metres) across a day window. Set loop=true for continuous traffic.","input_schema":{"type":"object","properties":{"name":{"type":"string"},"from_east":{"type":"number"},"from_north":{"type":"number"},"from_up":{"type":"number"},"to_east":{"type":"number"},"to_north":{"type":"number"},"to_up":{"type":"number"},"start":{"type":"number"},"days":{"type":"number"},"loop":{"type":"boolean"}},"required":["from_east","from_north","to_east","to_north","days"]}},
 {"name":"add_camera_keyframe","description":"Capture the current camera/viewport pose as a film keyframe at a construction day. Build a fly-through by adding several at different days.","input_schema":{"type":"object","properties":{"day":{"type":"number"}},"required":["day"]}},
 {"name":"play_film","description":"Play the schedule with the film camera driving the view along the captured keyframes (a recorded fly-through of the build).","input_schema":{"type":"object","properties":{}}},
-{"name":"clear_film","description":"Remove all camera keyframes.","input_schema":{"type":"object","properties":{}}}
+{"name":"clear_film","description":"Remove all camera keyframes.","input_schema":{"type":"object","properties":{}}},
+{"name":"save_project","description":"Save the current 4D project (tasks/stages/elements) to disk.","input_schema":{"type":"object","properties":{"path":{"type":"string","description":"optional file path; default project file if omitted"}}}},
+{"name":"load_project","description":"Load a 4D project from disk.","input_schema":{"type":"object","properties":{"path":{"type":"string"}}}},
+{"name":"save_scenario","description":"Save the current schedule as a named scenario (a what-if snapshot).","input_schema":{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}},
+{"name":"load_scenario","description":"Load a previously-saved named scenario.","input_schema":{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}},
+{"name":"list_scenarios","description":"List the saved scenario names.","input_schema":{"type":"object","properties":{}}}
 ])JSON");
 	}
 
@@ -172,6 +177,16 @@ namespace Earth4DTools
 		if (ToolName == TEXT("add_camera_keyframe")) return Sub->AddCameraKeyframe(Num(TEXT("day"))).Message;
 		if (ToolName == TEXT("play_film")) return Sub->PlayFilm().Message;
 		if (ToolName == TEXT("clear_film")) return Sub->ClearFilm().Message;
+
+		if (ToolName == TEXT("save_project")) return Sub->SaveProject(Args->HasField(TEXT("path")) ? Args->GetStringField(TEXT("path")) : FString()).Message;
+		if (ToolName == TEXT("load_project")) return Sub->LoadProject(Args->HasField(TEXT("path")) ? Args->GetStringField(TEXT("path")) : FString()).Message;
+		if (ToolName == TEXT("save_scenario")) return Sub->SaveScenario(Args->GetStringField(TEXT("name"))).Message;
+		if (ToolName == TEXT("load_scenario")) return Sub->LoadScenario(Args->GetStringField(TEXT("name"))).Message;
+		if (ToolName == TEXT("list_scenarios"))
+		{
+			const TArray<FString> S = Sub->ListScenarios();
+			return S.Num() ? FString::Join(S, TEXT(", ")) : TEXT("(no scenarios)");
+		}
 
 		if (ToolName == TEXT("auto_assign_from_metadata"))
 		{
