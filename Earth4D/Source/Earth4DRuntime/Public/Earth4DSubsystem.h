@@ -42,6 +42,11 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Earth4D") bool bPlaying = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D") float DaysPerSecond = 1.5f;
 
+	/** EvaluateAndApply drives opacity/clip/glow onto element materials (Phase 3). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D|Render") bool bDriveMaterials = true;
+	/** When a material can't fade, hide the element below this opacity (safe fallback). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D|Render") float MaterialFadeVisibilityCutoff = 0.5f;
+
 	/** The active georeferenced site (Cesium georeference + Google tiles). May be null. */
 	UPROPERTY(BlueprintReadOnly, Category = "Earth4D|Site") TObjectPtr<AEarth4DSite> ActiveSite = nullptr;
 
@@ -95,8 +100,19 @@ public:
 	// ---- Elements ----
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Elements") FEarth4DResult SetElementEdit(const FString& ElementId, const FEarth4DObjectEdit& Edit);
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Elements") FEarth4DResult ResetElementEdit(const FString& ElementId);
-	/** Register a scene component as a schedulable element; returns its stable id. */
+	/** Register a scene component as a schedulable element; returns its stable id.
+	 *  If the component is already registered, returns the existing id (no duplicate). */
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Elements") FString RegisterElement(USceneComponent* Component, const FString& DisplayName, const FString& Path);
+
+	// ---- Import → elements (Phase 3; mirrored as natural-language tools) ----
+	/** Ingest an actor (and, by default, its attached child-actor subtree) into the
+	 *  schedule: every mesh becomes an FEarth4DElement in region-local ENU, with
+	 *  imported Datasmith/Navisworks/Revit metadata copied onto it. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Elements") FEarth4DResult IngestActor(AActor* Root, bool bRecurse = true);
+	/** Find world actor(s) whose label/name matches and ingest them (chat-friendly). */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Elements") FEarth4DResult IngestActorByName(const FString& ActorName, bool bRecurse = true);
+	/** Ingest the current editor selection (authoring-time; no-op in a packaged build). */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Elements") FEarth4DResult IngestSelectedActors(bool bRecurse = true);
 
 	// ---- Stages ----
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Stages") FEarth4DResult AddStage(const FString& Name, FString& OutStageId);

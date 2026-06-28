@@ -59,6 +59,8 @@ namespace Earth4DTools
 {"name":"add_stage","description":"Add a stage / phase.","input_schema":{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}},
 {"name":"set_current_day","description":"Scrub the playback to a construction day.","input_schema":{"type":"object","properties":{"day":{"type":"number"}},"required":["day"]}},
 {"name":"auto_assign_from_metadata","description":"Group elements by an imported metadata key (e.g. a Navisworks/Revit property or phase) and auto-create a task per group with the elements assigned.","input_schema":{"type":"object","properties":{"meta_key":{"type":"string"},"type":{"type":"string","enum":["Construction","Demolition"]},"days_per_task":{"type":"number"}},"required":["meta_key"]}},
+{"name":"ingest_actor","description":"Import a scene actor (and, by default, its attached child-actor subtree) into the 4D schedule: every mesh becomes a schedulable element with its imported Datasmith/Navisworks/Revit metadata. Match by actor label/name (substring ok).","input_schema":{"type":"object","properties":{"actor_name":{"type":"string"},"recurse":{"type":"boolean","description":"also ingest attached child actors (default true)"}},"required":["actor_name"]}},
+{"name":"import_selected","description":"Ingest the actors currently selected in the editor into the 4D schedule (authoring-time).","input_schema":{"type":"object","properties":{"recurse":{"type":"boolean"}}}},
 {"name":"set_region_origin","description":"Re-origin the project region (and the Cesium georeference) to a geodetic point. Use this to set the construction site's real-world location by coordinates.","input_schema":{"type":"object","properties":{"lat":{"type":"number","description":"latitude degrees (WGS84)"},"lon":{"type":"number","description":"longitude degrees (WGS84)"},"height":{"type":"number","description":"ellipsoidal height in metres (optional)"}},"required":["lat","lon"]}},
 {"name":"fly_to","description":"Move the active camera to view a geodetic point on the Google 3D Tiles.","input_schema":{"type":"object","properties":{"lat":{"type":"number"},"lon":{"type":"number"},"height":{"type":"number"},"view_distance_m":{"type":"number","description":"how far back to frame from, metres"}},"required":["lat","lon"]}},
 {"name":"frame_region","description":"Move the active camera to frame the whole project region.","input_schema":{"type":"object","properties":{}}},
@@ -127,6 +129,17 @@ namespace Earth4DTools
 			Sub->GeocodeAndGoTo(Args->GetStringField(TEXT("query")), bSetOrigin);
 			// Async: the actual lat/lon arrives via OnLocationResult. Acknowledge the dispatch.
 			return FString::Printf(TEXT("Geocoding '%s'… result will follow on resolution."), *Args->GetStringField(TEXT("query")));
+		}
+
+		if (ToolName == TEXT("ingest_actor"))
+		{
+			const bool bRecurse = Args->HasField(TEXT("recurse")) ? Args->GetBoolField(TEXT("recurse")) : true;
+			return Sub->IngestActorByName(Args->GetStringField(TEXT("actor_name")), bRecurse).Message;
+		}
+		if (ToolName == TEXT("import_selected"))
+		{
+			const bool bRecurse = Args->HasField(TEXT("recurse")) ? Args->GetBoolField(TEXT("recurse")) : true;
+			return Sub->IngestSelectedActors(bRecurse).Message;
 		}
 
 		if (ToolName == TEXT("auto_assign_from_metadata"))
