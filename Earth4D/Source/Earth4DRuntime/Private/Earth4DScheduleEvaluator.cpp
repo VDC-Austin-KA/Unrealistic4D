@@ -191,15 +191,19 @@ namespace Earth4DScheduleEvaluator
 				else
 				{
 					const float P = FMath::Clamp((Day - Gov->S) / FMath::Max(Gov->E - Gov->S, KINDA_SMALL_NUMBER), 0.f, 1.f);
+					// Per-element animation override (web-app parity): an element can
+					// animate with its own style/direction instead of the task's.
+					const EEarth4DAnimStyle AnimStyle = Elem.Edit.bOverrideStyle ? Elem.Edit.OverrideStyle : Gov->Task->Style;
+					const EEarth4DDirection AnimDir = Elem.Edit.bOverrideDirection ? Elem.Edit.OverrideDirection : Gov->Task->Direction;
 					if (Gov->Task->Type == EEarth4DTaskType::Demolition)
 					{
 						if (Day >= Gov->E) { St.bVisible = false; St.Opacity = 0.f; }
-						else { St = StyleState(Gov->Task->Style, Gov->Task->Direction, 1.f - P, Elem, Gov->Task->Distance); }
+						else { St = StyleState(AnimStyle, AnimDir, 1.f - P, Elem, Gov->Task->Distance); }
 					}
 					else // construction / temporary build-in
 					{
 						if (Day >= Gov->E) { /* built: defaults */ }
-						else { St = StyleState(Gov->Task->Style, Gov->Task->Direction, P, Elem, Gov->Task->Distance); }
+						else { St = StyleState(AnimStyle, AnimDir, P, Elem, Gov->Task->Distance); }
 					}
 					if (P > 0.f && P < 1.f && Gov->Task->bHasGlowColor)
 					{

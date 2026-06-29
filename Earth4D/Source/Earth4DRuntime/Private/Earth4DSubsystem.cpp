@@ -34,6 +34,8 @@
 #include "Selection.h"                 // USelection (IngestSelectedActors)
 #include "EditorViewportClient.h"
 #include "LevelEditorViewport.h"
+#include "Exporters/Exporter.h"        // UExporter::RunAssetExportTask (glTF export)
+#include "Engine/AssetExportTask.h"
 #endif
 
 void UEarth4DSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -136,6 +138,55 @@ FEarth4DResult UEarth4DSubsystem::SetTaskStyle(const FString& TaskId, EEarth4DAn
 FEarth4DResult UEarth4DSubsystem::SetTaskDirection(const FString& TaskId, EEarth4DDirection Direction) { E4D_TASK(TaskId); T->Direction = Direction; EvaluateAndApply(CurrentDay); NotifyChanged(); return FEarth4DResult::Ok(); }
 FEarth4DResult UEarth4DSubsystem::SetTaskStagger(const FString& TaskId, float Stagger) { E4D_TASK(TaskId); T->Stagger = FMath::Max(0.f, Stagger); EvaluateAndApply(CurrentDay); NotifyChanged(); return FEarth4DResult::Ok(); }
 FEarth4DResult UEarth4DSubsystem::SetTaskStage(const FString& TaskId, const FString& StageId) { E4D_TASK(TaskId); T->StageId = StageId; NotifyChanged(); return FEarth4DResult::Ok(); }
+FEarth4DResult UEarth4DSubsystem::SetTaskSequence(const FString& TaskId, EEarth4DSequence Sequence) { E4D_TASK(TaskId); T->Sequence = Sequence; EvaluateAndApply(CurrentDay); NotifyChanged(); return FEarth4DResult::Ok(); }
+FEarth4DResult UEarth4DSubsystem::SetTaskDistance(const FString& TaskId, float Distance) { E4D_TASK(TaskId); T->Distance = FMath::Max(0.f, Distance); EvaluateAndApply(CurrentDay); NotifyChanged(); return FEarth4DResult::Ok(); }
+FEarth4DResult UEarth4DSubsystem::SetTaskOverlap(const FString& TaskId, float Overlap) { E4D_TASK(TaskId); T->Overlap = FMath::Clamp(Overlap, 0.f, 1.f); EvaluateAndApply(CurrentDay); NotifyChanged(); return FEarth4DResult::Ok(); }
+FEarth4DResult UEarth4DSubsystem::SetTaskColor(const FString& TaskId, FLinearColor Color) { E4D_TASK(TaskId); T->Color = Color; EvaluateAndApply(CurrentDay); NotifyChanged(); return FEarth4DResult::Ok(); }
+FEarth4DResult UEarth4DSubsystem::SetTaskGlowColor(const FString& TaskId, FLinearColor Color, bool bEnable) { E4D_TASK(TaskId); T->bHasGlowColor = bEnable; T->GlowColor = Color; EvaluateAndApply(CurrentDay); NotifyChanged(); return FEarth4DResult::Ok(); }
+
+FEarth4DResult UEarth4DSubsystem::AlignTask(const FString& TaskId, const FString& RelativeToTaskId, const FString& Mode, float Gap)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	FEarth4DTask* T = Schedule->FindTask(TaskId);
+	FEarth4DTask* Ref = Schedule->FindTask(RelativeToTaskId);
+	if (!T || !Ref) return FEarth4DResult::Fail(TEXT("Both task and relative-to task must exist"));
+	const float Dur = FMath::Max(T->End - T->Start, 0.f);
+	float Start = T->Start;
+	if (Mode == TEXT("after")) Start = Ref->End + Gap;
+	else if (Mode == TEXT("before")) Start = Ref->Start - Gap - Dur;
+	else if (Mode == TEXT("start-with")) Start = Ref->Start + Gap;
+	else if (Mode == TEXT("end-with")) Start = Ref->End - Dur + Gap;
+	else return FEarth4DResult::Fail(TEXT("Mode must be after|before|start-with|end-with"));
+	T->Start = Start; T->End = Start + Dur;
+	EvaluateAndApply(CurrentDay); NotifyChanged();
+	return FEarth4DResult::Ok(FString::Printf(TEXT("'%s' aligned %s '%s' (start %.1f)"), *T->Name, *Mode, *Ref->Name, Start));
+}
+
+FEarth4DResult UEarth4DSubsystem::SequenceTasks(const TArray<FString>& TaskIds, float Start, float Gap)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	if (TaskIds.Num() < 2) return FEarth4DResult::Fail(TEXT("Provide at least two task ids in order"));
+	float Cursor = Start;
+	int32 N = 0;
+	for (const FString& Id : TaskIds)
+	{
+		FEarth4DTask* T = Schedule->FindTask(Id);
+		if (!T) continue;
+		const float Dur = FMath::Max(T->End - T->Start, 1.f);
+		T->Start = Cursor; T->End = Cursor + Dur;
+		Cursor += Dur + Gap; ++N;
+	}
+	EvaluateAndApply(CurrentDay); NotifyChanged();
+	return FEarth4DResult::Ok(FString::Printf(TEXT("Sequenced %d tasks from day %.1f"), N, Start));
+}
+
+FEarth4DResult UEarth4DSubsystem::SetProjectStart(const FString& IsoDate)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	Schedule->ProjectStartIso = IsoDate;
+	NotifyChanged();
+	return FEarth4DResult::Ok(FString::Printf(TEXT("Project start set to %s"), *IsoDate));
+}
 
 // ---- Assignment ----
 FEarth4DResult UEarth4DSubsystem::AssignElementsToTask(const FString& TaskId, const TArray<FString>& ElementIds, bool bAdd)
@@ -211,6 +262,45 @@ void UEarth4DSubsystem::ClearSelection()
 {
 	SelectedElementIds.Reset();
 	NotifyChanged();
+}
+
+// ---- Selection sets ----
+FEarth4DResult UEarth4DSubsystem::SaveSelectionSet(const FString& Name, const TArray<FString>& ElementIds, FString& OutSetId)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	const TArray<FString>& Ids = ElementIds.Num() ? ElementIds : SelectedElementIds;
+	if (Ids.Num() == 0) return FEarth4DResult::Fail(TEXT("Nothing to save (pass ids or select some first)"));
+	// Overwrite an existing set with the same name, else append.
+	FEarth4DSelectionSet* Set = Schedule->SelectionSets.FindByPredicate([&](const FEarth4DSelectionSet& S){ return S.Name.Equals(Name, ESearchCase::IgnoreCase); });
+	if (!Set) { FEarth4DSelectionSet New; New.Id = NewId(TEXT("set")); New.Name = Name; Set = &Schedule->SelectionSets.Add_GetRef(New); }
+	Set->ObjectIds = Ids;
+	OutSetId = Set->Id;
+	NotifyChanged();
+	return FEarth4DResult::Ok(FString::Printf(TEXT("Saved set '%s' (%d elements)"), *Name, Ids.Num()));
+}
+
+FEarth4DResult UEarth4DSubsystem::ApplySelectionSet(const FString& IdOrName)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	const FEarth4DSelectionSet* Set = Schedule->SelectionSets.FindByPredicate([&](const FEarth4DSelectionSet& S){ return S.Id == IdOrName || S.Name.Equals(IdOrName, ESearchCase::IgnoreCase); });
+	if (!Set) return FEarth4DResult::Fail(TEXT("Selection set not found"));
+	return SelectElements(Set->ObjectIds, /*bAdd=*/false);
+}
+
+FEarth4DResult UEarth4DSubsystem::DeleteSelectionSet(const FString& IdOrName)
+{
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	const int32 Removed = Schedule->SelectionSets.RemoveAll([&](const FEarth4DSelectionSet& S){ return S.Id == IdOrName || S.Name.Equals(IdOrName, ESearchCase::IgnoreCase); });
+	if (Removed == 0) return FEarth4DResult::Fail(TEXT("Selection set not found"));
+	NotifyChanged();
+	return FEarth4DResult::Ok(TEXT("Selection set removed"));
+}
+
+TArray<FString> UEarth4DSubsystem::ListSelectionSetNames() const
+{
+	TArray<FString> Out;
+	if (Schedule) for (const FEarth4DSelectionSet& S : Schedule->SelectionSets) Out.Add(FString::Printf(TEXT("%s (%d)"), *S.Name, S.ObjectIds.Num()));
+	return Out;
 }
 
 FString UEarth4DSubsystem::RegisterElement(USceneComponent* Component, const FString& DisplayName, const FString& Path)
@@ -699,11 +789,189 @@ FEarth4DResult UEarth4DSubsystem::AddVehicle(const FString& Name, FVector FromEn
 #if WITH_EDITOR
 	if (!Name.IsEmpty()) V->SetActorLabel(Name);
 #endif
+	V->VehicleId = NewId(TEXT("veh"));
+	V->VehicleType = TEXT("truck");
+	V->DisplayName = Name.IsEmpty() ? TEXT("Vehicle") : Name;
 	V->RouteEnuMeters = { FromEnuMeters, ToEnuMeters };
 	V->StartDay = StartDay; V->Days = FMath::Max(1.f, Days); V->bLoop = bLoop;
 	V->RebuildRoute(ActiveSite);
 	V->ApplyDay(CurrentDay, ActiveSite);
-	return FEarth4DResult::Ok(FString::Printf(TEXT("Vehicle '%s' added."), *Name));
+	return FEarth4DResult::Ok(FString::Printf(TEXT("Vehicle '%s' added (%s)."), *V->DisplayName, *V->VehicleId));
+}
+
+namespace
+{
+	// Built-in construction-equipment catalog (generic stand-ins, like the web app's).
+	// Type → approx length in metres, used to scale the placeholder body.
+	static const TArray<TPair<FString, float>>& Earth4DVehicleCatalog()
+	{
+		static const TArray<TPair<FString, float>> Catalog = {
+			{ TEXT("excavator"), 7.f }, { TEXT("dump_truck"), 9.f }, { TEXT("bulldozer"), 6.f },
+			{ TEXT("crane"), 14.f }, { TEXT("concrete_mixer"), 9.f }, { TEXT("loader"), 7.f },
+			{ TEXT("backhoe"), 6.f }, { TEXT("flatbed_truck"), 12.f }, { TEXT("pickup"), 5.5f },
+			{ TEXT("car"), 4.5f }, { TEXT("forklift"), 3.5f }, { TEXT("truck"), 9.f }
+		};
+		return Catalog;
+	}
+	AEarth4DVehicle* Earth4DFindVehicle(UWorld* World, const FString& Id)
+	{
+		if (!World) return nullptr;
+		for (TActorIterator<AEarth4DVehicle> It(World); It; ++It)
+			if (It->VehicleId == Id) return *It;
+		return nullptr;
+	}
+}
+
+TArray<FString> UEarth4DSubsystem::ListVehicleTypes() const
+{
+	TArray<FString> Out;
+	for (const TPair<FString, float>& P : Earth4DVehicleCatalog()) Out.Add(P.Key);
+	return Out;
+}
+
+FEarth4DResult UEarth4DSubsystem::PlaceVehicle(const FString& Type, FVector EnuMeters, float HeadingDeg, FString& OutVehicleId)
+{
+	UWorld* World = GetWorld();
+	if (!World) return FEarth4DResult::Fail(TEXT("No world"));
+	float Size = 9.f; FString ResolvedType = Type.IsEmpty() ? TEXT("truck") : Type.ToLower();
+	for (const TPair<FString, float>& P : Earth4DVehicleCatalog()) if (P.Key == ResolvedType) { Size = P.Value; break; }
+	AEarth4DVehicle* V = World->SpawnActor<AEarth4DVehicle>();
+	if (!V) return FEarth4DResult::Fail(TEXT("Spawn failed"));
+	V->VehicleId = NewId(TEXT("veh"));
+	V->VehicleType = ResolvedType;
+	V->DisplayName = ResolvedType;
+	// A short route along the heading so the body has an orientation and sits in place.
+	const float Rad = FMath::DegreesToRadians(HeadingDeg);
+	const FVector Fwd(FMath::Cos(Rad), FMath::Sin(Rad), 0.f);
+	V->RouteEnuMeters = { EnuMeters - Fwd * (Size * 0.5f), EnuMeters + Fwd * (Size * 0.5f) };
+	V->StartDay = 0.f; V->Days = 1.f; V->bLoop = false; V->bHideOutsideWindow = false;
+	V->RebuildRoute(ActiveSite);
+	V->ApplyDay(CurrentDay, ActiveSite);
+	OutVehicleId = V->VehicleId;
+#if WITH_EDITOR
+	V->SetActorLabel(FString::Printf(TEXT("Vehicle_%s"), *ResolvedType));
+#endif
+	return FEarth4DResult::Ok(FString::Printf(TEXT("Placed %s (%s)"), *ResolvedType, *V->VehicleId));
+}
+
+TArray<FString> UEarth4DSubsystem::ListVehicles() const
+{
+	TArray<FString> Out;
+	if (UWorld* World = GetWorld())
+		for (TActorIterator<AEarth4DVehicle> It(World); It; ++It)
+			Out.Add(FString::Printf(TEXT("%s | %s | %s"), *It->VehicleId, *It->VehicleType, *It->DisplayName));
+	return Out;
+}
+
+FEarth4DResult UEarth4DSubsystem::RemoveVehicle(const FString& VehicleId)
+{
+	AEarth4DVehicle* V = Earth4DFindVehicle(GetWorld(), VehicleId);
+	if (!V) return FEarth4DResult::Fail(TEXT("Vehicle not found"));
+	V->Destroy();
+	return FEarth4DResult::Ok(TEXT("Vehicle removed"));
+}
+
+FEarth4DResult UEarth4DSubsystem::SetVehicleRoute(const FString& VehicleId, const TArray<FVector>& RouteEnuMeters, float StartDay, float Days, bool bLoop)
+{
+	AEarth4DVehicle* V = Earth4DFindVehicle(GetWorld(), VehicleId);
+	if (!V) return FEarth4DResult::Fail(TEXT("Vehicle not found"));
+	if (RouteEnuMeters.Num() < 2) return FEarth4DResult::Fail(TEXT("A route needs at least two points"));
+	V->RouteEnuMeters = RouteEnuMeters;
+	V->StartDay = StartDay; V->Days = FMath::Max(1.f, Days); V->bLoop = bLoop;
+	V->RebuildRoute(ActiveSite);
+	V->ApplyDay(CurrentDay, ActiveSite);
+	return FEarth4DResult::Ok(FString::Printf(TEXT("Route set (%d points)"), RouteEnuMeters.Num()));
+}
+
+FEarth4DResult UEarth4DSubsystem::CreateTraffic(const TArray<FVector>& PathEnuMeters, int32 Count, float Days, const FString& Type, int32& OutSpawned)
+{
+	UWorld* World = GetWorld();
+	if (!World) return FEarth4DResult::Fail(TEXT("No world"));
+	if (PathEnuMeters.Num() < 2) return FEarth4DResult::Fail(TEXT("Traffic needs a path of at least two points"));
+	const int32 N = FMath::Clamp(Count, 1, 200);
+	const float Loop = FMath::Max(1.f, Days);
+	OutSpawned = 0;
+	for (int32 i = 0; i < N; ++i)
+	{
+		AEarth4DVehicle* V = World->SpawnActor<AEarth4DVehicle>();
+		if (!V) continue;
+		V->VehicleId = NewId(TEXT("veh"));
+		V->VehicleType = Type.IsEmpty() ? TEXT("car") : Type.ToLower();
+		V->DisplayName = FString::Printf(TEXT("traffic_%d"), i);
+		V->RouteEnuMeters = PathEnuMeters;
+		// Stagger each vehicle's phase so they spread along the path.
+		V->StartDay = -(Loop * i) / N;
+		V->Days = Loop; V->bLoop = true; V->bHideOutsideWindow = false;
+		V->RebuildRoute(ActiveSite);
+		V->ApplyDay(CurrentDay, ActiveSite);
+		++OutSpawned;
+	}
+	return FEarth4DResult::Ok(FString::Printf(TEXT("Spawned %d traffic vehicles"), OutSpawned));
+}
+
+// ---- Export (glTF / GLB) ----
+namespace
+{
+	// Export the current world to a glTF/GLB via UE's glTF Exporter plugin (editor only).
+	// Returns false + message if the exporter isn't available (plugin disabled / packaged build).
+	FEarth4DResult Earth4DExportWorld(UWorld* World, const FString& FilePath)
+	{
+#if WITH_EDITOR
+		if (!World) return FEarth4DResult::Fail(TEXT("No world"));
+		const FString Dir = FPaths::GetPath(FilePath);
+		if (!Dir.IsEmpty()) IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);
+		UAssetExportTask* Task = NewObject<UAssetExportTask>();
+		Task->Object = World;
+		Task->Filename = FilePath;
+		Task->bSelected = false;
+		Task->bReplaceIdentical = true;
+		Task->bPrompt = false;
+		Task->bAutomated = true;
+		Task->bUseFileArchive = FilePath.EndsWith(TEXT(".glb")); // binary container
+		Task->bWriteEmptyFiles = false;
+		const bool bOk = UExporter::RunAssetExportTask(Task);
+		if (!bOk) return FEarth4DResult::Fail(TEXT("glTF export failed — enable the 'glTF Exporter' plugin (Edit → Plugins)."));
+		return FEarth4DResult::Ok(FString::Printf(TEXT("Exported %s"), *FilePath));
+#else
+		return FEarth4DResult::Fail(TEXT("Export is editor-only; in the packaged app use the Film camera + Movie Render Queue to record."));
+#endif
+	}
+}
+
+FEarth4DResult UEarth4DSubsystem::ExportRegionGLB(const FString& FilePath)
+{
+	const FString Path = FilePath.IsEmpty() ? FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Earth4D/Exports/region.glb")) : FilePath;
+	EvaluateAndApply(CurrentDay);
+	return Earth4DExportWorld(GetWorld(), Path);
+}
+
+FEarth4DResult UEarth4DSubsystem::ExportAnimatedGLB(const FString& FilePath)
+{
+	const FString Path = FilePath.IsEmpty() ? FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Earth4D/Exports/animated.glb")) : FilePath;
+	// The glTF Exporter bakes any level animations present; the schedule's per-day
+	// element motion is best recorded via the Film camera + Movie Render Queue.
+	FEarth4DResult R = Earth4DExportWorld(GetWorld(), Path);
+	if (R.bOk) R.Message += TEXT(" (static scene; for the full 4D animation use Play Film + Movie Render Queue)");
+	return R;
+}
+
+FEarth4DResult UEarth4DSubsystem::ExportPerTaskGLB(const FString& FolderPath, int32& OutFiles)
+{
+	OutFiles = 0;
+	if (!Schedule) return FEarth4DResult::Fail(TEXT("No schedule"));
+	const FString Folder = FolderPath.IsEmpty() ? FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Earth4D/Exports/PerTask")) : FolderPath;
+	const float SavedDay = CurrentDay;
+	for (const FEarth4DTask& T : Schedule->Tasks)
+	{
+		EvaluateAndApply(T.End); // model state at this task's completion
+		FString Safe = T.Name.IsEmpty() ? T.Id : T.Name;
+		Safe = Safe.Replace(TEXT(" "), TEXT("_")).Replace(TEXT("/"), TEXT("-"));
+		const FString Path = FPaths::Combine(Folder, FString::Printf(TEXT("%02d_%s.glb"), OutFiles + 1, *Safe));
+		if (Earth4DExportWorld(GetWorld(), Path).bOk) ++OutFiles;
+	}
+	EvaluateAndApply(SavedDay);
+	return OutFiles > 0 ? FEarth4DResult::Ok(FString::Printf(TEXT("Exported %d per-task GLBs to %s"), OutFiles, *Folder))
+		: FEarth4DResult::Fail(TEXT("No files exported (enable the glTF Exporter plugin, or no tasks)."));
 }
 
 FEarth4DResult UEarth4DSubsystem::AddCameraKeyframe(float Day)

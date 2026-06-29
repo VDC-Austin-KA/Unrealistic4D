@@ -2,6 +2,8 @@
 #include "Earth4DTools.h"
 #include "Earth4DSubsystem.h"
 #include "Earth4DSchedule.h"
+#include "Earth4DDatasmithLibrary.h"
+#include "Earth4DSite.h"
 #include "Dom/JsonObject.h"
 
 namespace
@@ -67,6 +69,44 @@ TEXT(R"JSON({"name":"remove_elements","description":"Remove elements from a task
 {"name":"frame_region","description":"Move the active camera to frame the whole project region.","input_schema":{"type":"object","properties":{}}},
 {"name":"geocode_goto","description":"Search for a place by name (e.g. 'Sydney Opera House') and move the project region + camera there. Async; result is reported back when found.","input_schema":{"type":"object","properties":{"query":{"type":"string"},"set_region_origin":{"type":"boolean","description":"also re-origin the region to the found place (default true)"}},"required":["query"]}},
 )JSON")
+TEXT(R"JSON({"name":"rename_task","description":"Rename a task.","input_schema":{"type":"object","properties":{"task_id":{"type":"string"},"name":{"type":"string"}},"required":["task_id","name"]}},
+{"name":"set_task_stage","description":"Assign a task to a stage/phase (empty stage_id clears it).","input_schema":{"type":"object","properties":{"task_id":{"type":"string"},"stage_id":{"type":"string"}},"required":["task_id"]}},
+{"name":"set_task_sequence","description":"Set how a task orders its elements as it animates.","input_schema":{"type":"object","properties":{"task_id":{"type":"string"},"sequence":{"type":"string","enum":["ByElevation","ByName","Together","Random"]}},"required":["task_id","sequence"]}},
+{"name":"set_task_distance","description":"Set the animation travel distance (metres) for slide/rise/drop styles.","input_schema":{"type":"object","properties":{"task_id":{"type":"string"},"distance":{"type":"number"}},"required":["task_id","distance"]}},
+{"name":"set_task_overlap","description":"Set element overlap 0..1 (0 = strictly sequential, 1 = all elements move together).","input_schema":{"type":"object","properties":{"task_id":{"type":"string"},"overlap":{"type":"number"}},"required":["task_id","overlap"]}},
+{"name":"set_task_color","description":"Set a task's display colour (RGB 0..1).","input_schema":{"type":"object","properties":{"task_id":{"type":"string"},"r":{"type":"number"},"g":{"type":"number"},"b":{"type":"number"}},"required":["task_id","r","g","b"]}},
+{"name":"set_task_glow","description":"Set (enable=true) or clear (enable=false) the action-glow emissive shown while a task's elements animate.","input_schema":{"type":"object","properties":{"task_id":{"type":"string"},"enable":{"type":"boolean"},"r":{"type":"number"},"g":{"type":"number"},"b":{"type":"number"}},"required":["task_id"]}},
+{"name":"select_elements","description":"Set the active element selection by ids and/or a name query. add=true appends.","input_schema":{"type":"object","properties":{"element_ids":{"type":"array","items":{"type":"string"}},"element_query":{"type":"string"},"add":{"type":"boolean"}}}},
+{"name":"set_element_edit","description":"Modify model content: per-element overrides applied on top of its authored transform/material. Targets element_ids and/or element_query (or the current selection if neither given). Any omitted field is left unchanged.","input_schema":{"type":"object","properties":{"element_ids":{"type":"array","items":{"type":"string"}},"element_query":{"type":"string"},"offset_e":{"type":"number"},"offset_n":{"type":"number"},"offset_up":{"type":"number"},"rotation_deg":{"type":"number"},"scale":{"type":"number"},"opacity":{"type":"number"},"hidden":{"type":"boolean"},"appear_day":{"type":"number"},"disappear_day":{"type":"number"},"stagger_delay":{"type":"number"},"override_style":{"type":"string","enum":["Fade","Drop","Rise","Slide","Grow","GrowUp","Spiral","Swoop","Assemble","Wipe"]},"override_direction":{"type":"string","enum":["North","South","East","West","Above","Below"]}}}},
+{"name":"set_element_color","description":"Set (enable=true) or clear (enable=false) a per-element colour override (RGB 0..1). Targets element_ids/element_query/selection.","input_schema":{"type":"object","properties":{"element_ids":{"type":"array","items":{"type":"string"}},"element_query":{"type":"string"},"enable":{"type":"boolean"},"r":{"type":"number"},"g":{"type":"number"},"b":{"type":"number"}}}},
+{"name":"reset_element_edit","description":"Clear all per-element overrides on the targeted elements.","input_schema":{"type":"object","properties":{"element_ids":{"type":"array","items":{"type":"string"}},"element_query":{"type":"string"}}}},
+{"name":"remove_stage","description":"Delete a stage/phase by id.","input_schema":{"type":"object","properties":{"stage_id":{"type":"string"}},"required":["stage_id"]}},
+{"name":"rename_stage","description":"Rename a stage/phase.","input_schema":{"type":"object","properties":{"stage_id":{"type":"string"},"name":{"type":"string"}},"required":["stage_id","name"]}},
+{"name":"set_stage_color","description":"Set a stage/phase colour (RGB 0..1).","input_schema":{"type":"object","properties":{"stage_id":{"type":"string"},"r":{"type":"number"},"g":{"type":"number"},"b":{"type":"number"}},"required":["stage_id","r","g","b"]}},
+{"name":"play","description":"Start playback of the construction sequence.","input_schema":{"type":"object","properties":{}}},
+{"name":"pause","description":"Pause playback.","input_schema":{"type":"object","properties":{}}},
+{"name":"set_speed","description":"Set playback speed in construction days per real second.","input_schema":{"type":"object","properties":{"days_per_second":{"type":"number"}},"required":["days_per_second"]}},
+{"name":"import_timeliner_csv","description":"Import a Navisworks TimeLiner schedule exported as CSV and rebuild it as Earth4D tasks, auto-linking elements whose metadata matches each task by the given match key.","input_schema":{"type":"object","properties":{"path":{"type":"string"},"match_key":{"type":"string"}},"required":["path","match_key"]}},
+{"name":"align_task","description":"Align a task's start relative to another task. mode: after|before|start-with|end-with; gap in days.","input_schema":{"type":"object","properties":{"task_id":{"type":"string"},"relative_to":{"type":"string"},"mode":{"type":"string","enum":["after","before","start-with","end-with"]},"gap":{"type":"number"}},"required":["task_id","relative_to"]}},
+{"name":"sequence_tasks","description":"Chain a set of tasks back-to-back in the given order, each keeping its duration. Optional start day and gap between them.","input_schema":{"type":"object","properties":{"task_ids":{"type":"array","items":{"type":"string"}},"start":{"type":"number"},"gap":{"type":"number"}},"required":["task_ids"]}},
+{"name":"set_project_start","description":"Set the project start date (ISO-8601, e.g. 2026-03-01), the day-0 anchor for the schedule.","input_schema":{"type":"object","properties":{"date":{"type":"string"}},"required":["date"]}},
+{"name":"list_stages","description":"List the stages/phases (id, name).","input_schema":{"type":"object","properties":{}}},
+{"name":"get_selection","description":"Get the ids of the currently selected elements.","input_schema":{"type":"object","properties":{}}},
+{"name":"region_center","description":"Get the project region's geodetic origin (lat, lon, height).","input_schema":{"type":"object","properties":{}}},
+{"name":"save_selection_set","description":"Save a named, reusable element selection. Targets element_ids/element_query, or the current selection if neither is given.","input_schema":{"type":"object","properties":{"name":{"type":"string"},"element_ids":{"type":"array","items":{"type":"string"}},"element_query":{"type":"string"}},"required":["name"]}},
+{"name":"apply_selection_set","description":"Make a saved selection set the live selection (match by name or id).","input_schema":{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}},
+{"name":"delete_selection_set","description":"Delete a saved selection set (by name or id).","input_schema":{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}},
+{"name":"list_selection_sets","description":"List the saved selection sets.","input_schema":{"type":"object","properties":{}}},
+{"name":"list_vehicle_types","description":"List the built-in vehicle/equipment catalog types that place_vehicle accepts.","input_schema":{"type":"object","properties":{}}},
+{"name":"place_vehicle","description":"Place a catalog vehicle/equipment at a region-local ENU point (metres east/north/up) facing heading degrees. Returns its id.","input_schema":{"type":"object","properties":{"type":{"type":"string"},"east":{"type":"number"},"north":{"type":"number"},"up":{"type":"number"},"heading":{"type":"number"}},"required":["type","east","north"]}},
+{"name":"list_vehicles","description":"List the placed vehicles as 'id | type | name'.","input_schema":{"type":"object","properties":{}}},
+{"name":"remove_vehicle","description":"Remove a placed vehicle by id.","input_schema":{"type":"object","properties":{"vehicle_id":{"type":"string"}},"required":["vehicle_id"]}},
+{"name":"set_vehicle_route","description":"Set a placed vehicle's multi-point route. path is an array of [east,north,up] (metres). Drives the route across the day window; loop=true for continuous.","input_schema":{"type":"object","properties":{"vehicle_id":{"type":"string"},"path":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"start":{"type":"number"},"days":{"type":"number"},"loop":{"type":"boolean"}},"required":["vehicle_id","path"]}},
+{"name":"create_traffic","description":"Spawn a flow of looping vehicles staggered along a shared path for continuous traffic. path is an array of [east,north,up] (metres).","input_schema":{"type":"object","properties":{"path":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"count":{"type":"number"},"days":{"type":"number"},"type":{"type":"string"}},"required":["path"]}},
+{"name":"export_region_glb","description":"Export the scheduled scene at the current day to a single GLB (editor only; needs the glTF Exporter plugin).","input_schema":{"type":"object","properties":{"path":{"type":"string"}}}},
+{"name":"export_animated_glb","description":"Export the build as a GLB (editor only). For the full 4D animation, use play_film + Movie Render Queue.","input_schema":{"type":"object","properties":{"path":{"type":"string"}}}},
+{"name":"export_per_task_glb","description":"Export one GLB per task (the model state at each task's completion) into a folder (editor only).","input_schema":{"type":"object","properties":{"folder":{"type":"string"}}}},
+)JSON")
 TEXT(R"JSON({"name":"add_annotation","description":"Place a 3D-text annotation/callout on the site at a region-local ENU point (metres: east/north/up), optionally gated by a day window.","input_schema":{"type":"object","properties":{"text":{"type":"string"},"east":{"type":"number"},"north":{"type":"number"},"up":{"type":"number"},"appear_day":{"type":"number"},"disappear_day":{"type":"number"}},"required":["text"]}},
 {"name":"add_excavation","description":"Dig an excavation pit at a region-local ENU point that carves out over a day window. size_e/size_n are the footprint, depth is the dig depth (metres).","input_schema":{"type":"object","properties":{"east":{"type":"number"},"north":{"type":"number"},"up":{"type":"number"},"size_e":{"type":"number"},"size_n":{"type":"number"},"depth":{"type":"number"},"start":{"type":"number"},"days":{"type":"number"}},"required":["size_e","size_n","depth","days"]}},
 {"name":"add_vehicle","description":"Add a vehicle/equipment that drives a straight route between two region-local ENU points (metres) across a day window. Set loop=true for continuous traffic.","input_schema":{"type":"object","properties":{"name":{"type":"string"},"from_east":{"type":"number"},"from_north":{"type":"number"},"from_up":{"type":"number"},"to_east":{"type":"number"},"to_north":{"type":"number"},"to_up":{"type":"number"},"start":{"type":"number"},"days":{"type":"number"},"loop":{"type":"boolean"}},"required":["from_east","from_north","to_east","to_north","days"]}},
@@ -84,6 +124,9 @@ TEXT(R"JSON({"name":"add_annotation","description":"Place a 3D-text annotation/c
 	FString Dispatch(const FString& ToolName, const TSharedPtr<FJsonObject>& Args, UEarth4DSubsystem* Sub)
 	{
 		if (!Sub || !Args) return TEXT("error: no subsystem/args");
+
+		// Optional numeric field with default (used across many tools below).
+		auto Num = [&](const TCHAR* Key, double Default = 0.0) { return Args->HasField(Key) ? Args->GetNumberField(Key) : Default; };
 
 		if (ToolName == TEXT("list_tasks")) return Sub->GetScheduleSummary();
 
@@ -109,8 +152,182 @@ TEXT(R"JSON({"name":"add_annotation","description":"Place a 3D-text annotation/c
 		if (ToolName == TEXT("set_task_style")) return Sub->SetTaskStyle(Args->GetStringField(TEXT("task_id")), ParseStyle(Args->GetStringField(TEXT("style")))).Message;
 		if (ToolName == TEXT("set_task_direction")) return Sub->SetTaskDirection(Args->GetStringField(TEXT("task_id")), ParseDir(Args->GetStringField(TEXT("direction")))).Message;
 		if (ToolName == TEXT("set_task_stagger")) return Sub->SetTaskStagger(Args->GetStringField(TEXT("task_id")), Args->GetNumberField(TEXT("stagger"))).Message;
+		if (ToolName == TEXT("rename_task")) return Sub->RenameTask(Args->GetStringField(TEXT("task_id")), Args->GetStringField(TEXT("name"))).Message;
+		if (ToolName == TEXT("set_task_stage")) return Sub->SetTaskStage(Args->GetStringField(TEXT("task_id")), Args->HasField(TEXT("stage_id")) ? Args->GetStringField(TEXT("stage_id")) : FString()).Message;
+		if (ToolName == TEXT("set_task_sequence"))
+		{
+			const UEnum* E = StaticEnum<EEarth4DSequence>();
+			const int64 V = E->GetValueByNameString(Args->GetStringField(TEXT("sequence")));
+			return Sub->SetTaskSequence(Args->GetStringField(TEXT("task_id")), V == INDEX_NONE ? EEarth4DSequence::ByElevation : (EEarth4DSequence)V).Message;
+		}
+		if (ToolName == TEXT("set_task_distance")) return Sub->SetTaskDistance(Args->GetStringField(TEXT("task_id")), Args->GetNumberField(TEXT("distance"))).Message;
+		if (ToolName == TEXT("set_task_overlap")) return Sub->SetTaskOverlap(Args->GetStringField(TEXT("task_id")), Args->GetNumberField(TEXT("overlap"))).Message;
+		if (ToolName == TEXT("set_task_color"))
+			return Sub->SetTaskColor(Args->GetStringField(TEXT("task_id")), FLinearColor(Args->GetNumberField(TEXT("r")), Args->GetNumberField(TEXT("g")), Args->GetNumberField(TEXT("b")))).Message;
+		if (ToolName == TEXT("set_task_glow"))
+		{
+			const bool bEnable = Args->HasField(TEXT("enable")) ? Args->GetBoolField(TEXT("enable")) : true;
+			const FLinearColor C(Args->HasField(TEXT("r")) ? Args->GetNumberField(TEXT("r")) : 0.2, Args->HasField(TEXT("g")) ? Args->GetNumberField(TEXT("g")) : 1.0, Args->HasField(TEXT("b")) ? Args->GetNumberField(TEXT("b")) : 0.3);
+			return Sub->SetTaskGlowColor(Args->GetStringField(TEXT("task_id")), C, bEnable).Message;
+		}
 		if (ToolName == TEXT("add_stage")) { FString Id; return Sub->AddStage(Args->GetStringField(TEXT("name")), Id).Message; }
+		if (ToolName == TEXT("remove_stage")) return Sub->RemoveStage(Args->GetStringField(TEXT("stage_id"))).Message;
+		if (ToolName == TEXT("rename_stage")) return Sub->RenameStage(Args->GetStringField(TEXT("stage_id")), Args->GetStringField(TEXT("name"))).Message;
+		if (ToolName == TEXT("set_stage_color"))
+			return Sub->SetStageColor(Args->GetStringField(TEXT("stage_id")), FLinearColor(Args->GetNumberField(TEXT("r")), Args->GetNumberField(TEXT("g")), Args->GetNumberField(TEXT("b")))).Message;
+		if (ToolName == TEXT("play")) { Sub->Play(); return TEXT("playing"); }
+		if (ToolName == TEXT("pause")) { Sub->Pause(); return TEXT("paused"); }
+		if (ToolName == TEXT("set_speed")) { Sub->SetSpeed(Args->GetNumberField(TEXT("days_per_second"))); return TEXT("ok"); }
 		if (ToolName == TEXT("set_current_day")) { Sub->SetCurrentDay(Args->GetNumberField(TEXT("day"))); return TEXT("ok"); }
+
+		if (ToolName == TEXT("select_elements"))
+		{
+			const bool bAdd = Args->HasField(TEXT("add")) ? Args->GetBoolField(TEXT("add")) : false;
+			return Sub->SelectElements(ResolveTargets(Sub, Args), bAdd).Message;
+		}
+		if (ToolName == TEXT("set_element_edit") || ToolName == TEXT("set_element_color") || ToolName == TEXT("reset_element_edit"))
+		{
+			// Targets: explicit ids/query, else the current selection.
+			TArray<FString> Ids = ResolveTargets(Sub, Args);
+			if (Ids.Num() == 0) Ids = Sub->SelectedElementIds;
+			if (Ids.Num() == 0) return TEXT("error: no target elements (give element_ids/element_query or select some first)");
+			int32 N = 0;
+			for (const FString& Id : Ids)
+			{
+				if (ToolName == TEXT("reset_element_edit")) { Sub->ResetElementEdit(Id); ++N; continue; }
+				if (ToolName == TEXT("set_element_color"))
+				{
+					const bool bEnable = Args->HasField(TEXT("enable")) ? Args->GetBoolField(TEXT("enable")) : true;
+					const FLinearColor C(Args->HasField(TEXT("r")) ? Args->GetNumberField(TEXT("r")) : 1.0, Args->HasField(TEXT("g")) ? Args->GetNumberField(TEXT("g")) : 1.0, Args->HasField(TEXT("b")) ? Args->GetNumberField(TEXT("b")) : 1.0);
+					Sub->SetElementColor(Id, C, bEnable); ++N; continue;
+				}
+				// set_element_edit: start from the element's current edit and patch.
+				const FEarth4DElement* El = Sub->Schedule ? Sub->Schedule->FindElement(Id) : nullptr;
+				if (!El) continue;
+				FEarth4DObjectEdit Edit = El->Edit;
+				if (Args->HasField(TEXT("offset_e"))) Edit.Offset.X = Args->GetNumberField(TEXT("offset_e"));
+				if (Args->HasField(TEXT("offset_n"))) Edit.Offset.Y = Args->GetNumberField(TEXT("offset_n"));
+				if (Args->HasField(TEXT("offset_up"))) Edit.Offset.Z = Args->GetNumberField(TEXT("offset_up"));
+				if (Args->HasField(TEXT("rotation_deg"))) Edit.RotationDeg = Args->GetNumberField(TEXT("rotation_deg"));
+				if (Args->HasField(TEXT("scale"))) Edit.Scale = FMath::Max(0.001f, (float)Args->GetNumberField(TEXT("scale")));
+				if (Args->HasField(TEXT("opacity"))) Edit.Opacity = Args->GetNumberField(TEXT("opacity"));
+				if (Args->HasField(TEXT("hidden"))) Edit.bHidden = Args->GetBoolField(TEXT("hidden"));
+				if (Args->HasField(TEXT("appear_day"))) Edit.AppearDay = Args->GetNumberField(TEXT("appear_day"));
+				if (Args->HasField(TEXT("disappear_day"))) Edit.DisappearDay = Args->GetNumberField(TEXT("disappear_day"));
+				if (Args->HasField(TEXT("stagger_delay"))) Edit.StaggerDelay = Args->GetNumberField(TEXT("stagger_delay"));
+				if (Args->HasField(TEXT("override_style"))) { Edit.bOverrideStyle = true; Edit.OverrideStyle = ParseStyle(Args->GetStringField(TEXT("override_style"))); }
+				if (Args->HasField(TEXT("override_direction"))) { Edit.bOverrideDirection = true; Edit.OverrideDirection = ParseDir(Args->GetStringField(TEXT("override_direction"))); }
+				Sub->SetElementEdit(Id, Edit); ++N;
+			}
+			return FString::Printf(TEXT("Updated %d element(s)."), N);
+		}
+
+		if (ToolName == TEXT("import_timeliner_csv"))
+		{
+			// Routed through the Datasmith library helper (same as the editor button).
+			return UEarth4DDatasmithLibrary::ImportTimeLinerCsv(Sub, Args->GetStringField(TEXT("path")), Args->GetStringField(TEXT("match_key"))).Message;
+		}
+		if (ToolName == TEXT("align_task"))
+		{
+			const FString Mode = Args->HasField(TEXT("mode")) ? Args->GetStringField(TEXT("mode")) : TEXT("after");
+			const float Gap = Args->HasField(TEXT("gap")) ? Args->GetNumberField(TEXT("gap")) : 0.f;
+			return Sub->AlignTask(Args->GetStringField(TEXT("task_id")), Args->GetStringField(TEXT("relative_to")), Mode, Gap).Message;
+		}
+		if (ToolName == TEXT("sequence_tasks"))
+		{
+			TArray<FString> Ids;
+			const TArray<TSharedPtr<FJsonValue>>* Arr;
+			if (Args->TryGetArrayField(TEXT("task_ids"), Arr)) for (const auto& V : *Arr) Ids.Add(V->AsString());
+			const float Start = Args->HasField(TEXT("start")) ? Args->GetNumberField(TEXT("start")) : 0.f;
+			const float Gap = Args->HasField(TEXT("gap")) ? Args->GetNumberField(TEXT("gap")) : 0.f;
+			return Sub->SequenceTasks(Ids, Start, Gap).Message;
+		}
+		if (ToolName == TEXT("set_project_start")) return Sub->SetProjectStart(Args->GetStringField(TEXT("date"))).Message;
+		if (ToolName == TEXT("list_stages"))
+		{
+			if (!Sub->Schedule) return TEXT("(no schedule)");
+			TArray<FString> Lines;
+			for (const FEarth4DStage& St : Sub->Schedule->Stages) Lines.Add(FString::Printf(TEXT("%s: %s"), *St.Id, *St.Name));
+			return Lines.Num() ? FString::Join(Lines, TEXT("\n")) : TEXT("(no stages)");
+		}
+		if (ToolName == TEXT("get_selection"))
+			return Sub->SelectedElementIds.Num() ? FString::Join(Sub->SelectedElementIds, TEXT(", ")) : TEXT("(nothing selected)");
+		if (ToolName == TEXT("region_center"))
+		{
+			if (AEarth4DSite* Site = Sub->GetSite())
+				return FString::Printf(TEXT("{\"lat\":%.7f,\"lon\":%.7f,\"height\":%.2f}"), Site->OriginLatitude, Site->OriginLongitude, Site->OriginHeight);
+			return TEXT("error: no site bound (place an Earth4D Site actor)");
+		}
+
+		// ---- Selection sets ----
+		if (ToolName == TEXT("save_selection_set"))
+		{
+			TArray<FString> Ids = ResolveTargets(Sub, Args);
+			if (Ids.Num() == 0) Ids = Sub->SelectedElementIds;
+			FString SetId;
+			return Sub->SaveSelectionSet(Args->GetStringField(TEXT("name")), Ids, SetId).Message;
+		}
+		if (ToolName == TEXT("apply_selection_set")) return Sub->ApplySelectionSet(Args->GetStringField(TEXT("name"))).Message;
+		if (ToolName == TEXT("delete_selection_set")) return Sub->DeleteSelectionSet(Args->GetStringField(TEXT("name"))).Message;
+		if (ToolName == TEXT("list_selection_sets"))
+		{
+			const TArray<FString> S = Sub->ListSelectionSetNames();
+			return S.Num() ? FString::Join(S, TEXT("\n")) : TEXT("(no selection sets)");
+		}
+
+		// ---- Vehicles / traffic ----
+		// Parse a JSON path field (array of [east,north,up]) into region-local ENU vectors.
+		auto ParsePath = [&](const TCHAR* Field) -> TArray<FVector>
+		{
+			TArray<FVector> Pts;
+			const TArray<TSharedPtr<FJsonValue>>* Arr;
+			if (Args->TryGetArrayField(Field, Arr))
+				for (const TSharedPtr<FJsonValue>& V : *Arr)
+				{
+					const TArray<TSharedPtr<FJsonValue>>* P;
+					if (V->TryGetArray(P) && P->Num() >= 2)
+						Pts.Add(FVector((*P)[0]->AsNumber(), (*P)[1]->AsNumber(), P->Num() >= 3 ? (*P)[2]->AsNumber() : 0.0));
+				}
+			return Pts;
+		};
+		if (ToolName == TEXT("list_vehicle_types"))
+		{
+			const TArray<FString> T = Sub->ListVehicleTypes();
+			return FString::Join(T, TEXT(", "));
+		}
+		if (ToolName == TEXT("place_vehicle"))
+		{
+			const FVector Enu(Num(TEXT("east")), Num(TEXT("north")), Num(TEXT("up")));
+			FString Id;
+			return Sub->PlaceVehicle(Args->GetStringField(TEXT("type")), Enu, Num(TEXT("heading")), Id).Message;
+		}
+		if (ToolName == TEXT("list_vehicles"))
+		{
+			const TArray<FString> V = Sub->ListVehicles();
+			return V.Num() ? FString::Join(V, TEXT("\n")) : TEXT("(no vehicles)");
+		}
+		if (ToolName == TEXT("remove_vehicle")) return Sub->RemoveVehicle(Args->GetStringField(TEXT("vehicle_id"))).Message;
+		if (ToolName == TEXT("set_vehicle_route"))
+		{
+			const bool bLoop = Args->HasField(TEXT("loop")) ? Args->GetBoolField(TEXT("loop")) : false;
+			return Sub->SetVehicleRoute(Args->GetStringField(TEXT("vehicle_id")), ParsePath(TEXT("path")), Num(TEXT("start")), Num(TEXT("days"), 5.0), bLoop).Message;
+		}
+		if (ToolName == TEXT("create_traffic"))
+		{
+			int32 Spawned = 0;
+			const int32 Count = Args->HasField(TEXT("count")) ? (int32)Args->GetNumberField(TEXT("count")) : 6;
+			const FString Type = Args->HasField(TEXT("type")) ? Args->GetStringField(TEXT("type")) : TEXT("car");
+			return Sub->CreateTraffic(ParsePath(TEXT("path")), Count, Num(TEXT("days"), 10.0), Type, Spawned).Message;
+		}
+
+		// ---- Export ----
+		if (ToolName == TEXT("export_region_glb")) return Sub->ExportRegionGLB(Args->HasField(TEXT("path")) ? Args->GetStringField(TEXT("path")) : FString()).Message;
+		if (ToolName == TEXT("export_animated_glb")) return Sub->ExportAnimatedGLB(Args->HasField(TEXT("path")) ? Args->GetStringField(TEXT("path")) : FString()).Message;
+		if (ToolName == TEXT("export_per_task_glb"))
+		{
+			int32 Files = 0;
+			return Sub->ExportPerTaskGLB(Args->HasField(TEXT("folder")) ? Args->GetStringField(TEXT("folder")) : FString(), Files).Message;
+		}
 
 		if (ToolName == TEXT("assign_elements"))
 		{
@@ -154,8 +371,6 @@ TEXT(R"JSON({"name":"add_annotation","description":"Place a 3D-text annotation/c
 			const bool bRecurse = Args->HasField(TEXT("recurse")) ? Args->GetBoolField(TEXT("recurse")) : true;
 			return Sub->IngestSelectedActors(bRecurse).Message;
 		}
-
-		auto Num = [&](const TCHAR* Key, double Default = 0.0) { return Args->HasField(Key) ? Args->GetNumberField(Key) : Default; };
 
 		if (ToolName == TEXT("add_annotation"))
 		{

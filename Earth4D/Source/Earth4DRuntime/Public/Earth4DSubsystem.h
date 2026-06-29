@@ -105,6 +105,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Tasks") FEarth4DResult SetTaskDirection(const FString& TaskId, EEarth4DDirection Direction);
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Tasks") FEarth4DResult SetTaskStagger(const FString& TaskId, float Stagger);
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Tasks") FEarth4DResult SetTaskStage(const FString& TaskId, const FString& StageId);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Tasks") FEarth4DResult SetTaskSequence(const FString& TaskId, EEarth4DSequence Sequence);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Tasks") FEarth4DResult SetTaskDistance(const FString& TaskId, float Distance);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Tasks") FEarth4DResult SetTaskOverlap(const FString& TaskId, float Overlap);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Tasks") FEarth4DResult SetTaskColor(const FString& TaskId, FLinearColor Color);
+	/** Set (or clear) the per-task "action glow" emissive shown while an element animates. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Tasks") FEarth4DResult SetTaskGlowColor(const FString& TaskId, FLinearColor Color, bool bEnable = true);
+	/** Align a task relative to another: Mode = after | before | start-with | end-with (Gap days). */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Tasks") FEarth4DResult AlignTask(const FString& TaskId, const FString& RelativeToTaskId, const FString& Mode, float Gap = 0.f);
+	/** Chain tasks back-to-back in the given order (auto-sequence), each keeping its duration. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Tasks") FEarth4DResult SequenceTasks(const TArray<FString>& TaskIds, float Start, float Gap = 0.f);
+	/** Set the project start date (ISO-8601), the day-0 anchor for the schedule. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Tasks") FEarth4DResult SetProjectStart(const FString& IsoDate);
 
 	// ---- Assignment ----
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Assign") FEarth4DResult AssignElementsToTask(const FString& TaskId, const TArray<FString>& ElementIds, bool bAdd);
@@ -122,6 +134,14 @@ public:
 	/** Select every element whose name/path matches a substring (chat-friendly). */
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Select") FEarth4DResult SelectByName(const FString& Query, bool bAdd = false);
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Select") void ClearSelection();
+
+	// ---- Selection sets (named reusable selections; web-app parity) ----
+	/** Save element ids as a named selection set; returns its id (re-names if the name exists). */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Select") FEarth4DResult SaveSelectionSet(const FString& Name, const TArray<FString>& ElementIds, FString& OutSetId);
+	/** Replace the live selection with a saved set (match by id or name). */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Select") FEarth4DResult ApplySelectionSet(const FString& IdOrName);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Select") FEarth4DResult DeleteSelectionSet(const FString& IdOrName);
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Select") TArray<FString> ListSelectionSetNames() const;
 	/** Register a scene component as a schedulable element; returns its stable id.
 	 *  If the component is already registered, returns the existing id (no duplicate). */
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Elements") FString RegisterElement(USceneComponent* Component, const FString& DisplayName, const FString& Path);
@@ -173,6 +193,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Excavate") FEarth4DResult AddExcavation(FVector EnuMeters, FVector SizeMeters, float StartDay, float Days);
 	/** Spawn a vehicle that drives a straight route between two region-local ENU points over a window. */
 	UFUNCTION(BlueprintCallable, Category = "Earth4D|Vehicles") FEarth4DResult AddVehicle(const FString& Name, FVector FromEnuMeters, FVector ToEnuMeters, float StartDay, float Days, bool bLoop = false);
+	/** The built-in vehicle/equipment catalog types that PlaceVehicle accepts. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Vehicles") TArray<FString> ListVehicleTypes() const;
+	/** Place a catalog vehicle at a region-local ENU point facing HeadingDeg; returns its id. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Vehicles") FEarth4DResult PlaceVehicle(const FString& Type, FVector EnuMeters, float HeadingDeg, FString& OutVehicleId);
+	/** List the spawned vehicles as "id | type | name" strings. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Vehicles") TArray<FString> ListVehicles() const;
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Vehicles") FEarth4DResult RemoveVehicle(const FString& VehicleId);
+	/** Set a spawned vehicle's multi-point route (region-local ENU metres). */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Vehicles") FEarth4DResult SetVehicleRoute(const FString& VehicleId, const TArray<FVector>& RouteEnuMeters, float StartDay, float Days, bool bLoop);
+	/** Spawn Count looping vehicles staggered along a shared path for continuous traffic. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Vehicles") FEarth4DResult CreateTraffic(const TArray<FVector>& PathEnuMeters, int32 Count, float Days, const FString& Type, int32& OutSpawned);
+
+	// ---- Export (glTF / GLB; web-app parity) ----
+	/** Export the scheduled element geometry to a single GLB at the current day (editor only). */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Export") FEarth4DResult ExportRegionGLB(const FString& FilePath);
+	/** Export the build as an animated GLB (baked schedule). Editor only. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Export") FEarth4DResult ExportAnimatedGLB(const FString& FilePath);
+	/** Export one GLB per task (the model state at each task's completion) into a folder. */
+	UFUNCTION(BlueprintCallable, Category = "Earth4D|Export") FEarth4DResult ExportPerTaskGLB(const FString& FolderPath, int32& OutFiles);
 
 	/** Evaluate the schedule at `Day` and write states onto the scene components. */
 	void EvaluateAndApply(float Day);

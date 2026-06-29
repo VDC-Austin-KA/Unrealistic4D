@@ -41,6 +41,15 @@ private:
 	FReply OnAssignToTask();
 	FReply OnFilterCommitted();
 
+	// Selection sets (named reusable selections).
+	FReply OnSaveSelectionSet();
+	TSharedRef<SWidget> BuildSelectionSetsMenu();
+
+	/** Enum dropdown bound to a getter/setter (Style / Direction overrides). */
+	TSharedRef<SWidget> MakeEnumCombo(class UEnum* Enum, TFunction<int32()> Get, TFunction<void(int32)> Set);
+	/** Keepalive storage for the enum combo option lists. */
+	TArray<TSharedPtr<TArray<TSharedPtr<FString>>>> ComboSources;
+
 	TFunction<UEarth4DSubsystem*()> SubsystemGetter;
 	TAttribute<FString> ActiveTaskId;
 

@@ -71,6 +71,12 @@ struct FEarth4DObjectEdit
 	/** Shared pivot (region-local ENU) for group transforms; bUsePivot toggles it. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bUsePivot = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) FVector Pivot = FVector::ZeroVector;
+	/** Per-element animation override: when set, this element animates with its own
+	 *  style/direction instead of inheriting the governing task's (web-app parity). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bOverrideStyle = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) EEarth4DAnimStyle OverrideStyle = EEarth4DAnimStyle::Rise;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bOverrideDirection = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) EEarth4DDirection OverrideDirection = EEarth4DDirection::Above;
 };
 
 /** A scheduled task (mirrors fourd Task). Times are inclusive day indices. */
@@ -132,6 +138,17 @@ struct FEarth4DElement
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) FEarth4DObjectEdit Edit;
 };
 
+/** A named, reusable element selection (web app's selection / search sets). */
+USTRUCT(BlueprintType)
+struct FEarth4DSelectionSet
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FString Id;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FString Name;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FString> ObjectIds;
+};
+
 /** Evaluator output for one element at one day (mirrors fourd ObjectState). */
 USTRUCT(BlueprintType)
 struct FEarth4DObjectState
@@ -164,6 +181,7 @@ struct FEarth4DScheduleData
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FEarth4DStage> Stages;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FEarth4DTask> Tasks;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FEarth4DElement> Elements;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FEarth4DSelectionSet> SelectionSets;
 };
 
 /** Small result returned by command-API verbs so chat/MCP can report back. */

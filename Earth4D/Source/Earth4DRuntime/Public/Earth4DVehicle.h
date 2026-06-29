@@ -24,6 +24,11 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Earth4D") TObjectPtr<USplineComponent> Route = nullptr;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Earth4D") TObjectPtr<UStaticMeshComponent> Body = nullptr;
 
+	/** Stable id / catalog type / display name (web app's vehicle registry). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Earth4D|Vehicle") FString VehicleId;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D|Vehicle") FString VehicleType;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D|Vehicle") FString DisplayName;
+
 	/** Route waypoints in region-local ENU metres (authoring source of truth). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D|Vehicle") TArray<FVector> RouteEnuMeters;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D|Vehicle") float StartDay = 0.f;
