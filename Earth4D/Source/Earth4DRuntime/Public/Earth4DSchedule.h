@@ -21,6 +21,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D") TArray<FEarth4DStage> Stages;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D") TArray<FEarth4DTask> Tasks;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D") TArray<FEarth4DElement> Elements;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Earth4D") TArray<FEarth4DSelectionSet> SelectionSets;
 
 	// ---- lookup helpers ----
 	FEarth4DTask* FindTask(const FString& Id);

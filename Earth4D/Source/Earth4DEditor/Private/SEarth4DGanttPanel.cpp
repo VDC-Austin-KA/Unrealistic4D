@@ -11,6 +11,9 @@
 #include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
+#include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Colors/SColorBlock.h"
+#include "Widgets/Colors/SColorPicker.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Layout/SGridPanel.h"
@@ -43,6 +46,9 @@ void SEarth4DGanttPanel::Construct(const FArguments&)
 	AddRow(LOCTEXT("Dir", "Direction"), BuildEnumCombo(StaticEnum<EEarth4DDirection>(),
 		[this]{ const FEarth4DTask* T = GetSelectedTask(); return T ? (int32)T->Direction : 0; },
 		[this](int32 V){ if (UEarth4DSubsystem* S = ResolveSubsystem()) S->SetTaskDirection(SelectedTaskId, (EEarth4DDirection)V); }));
+	AddRow(LOCTEXT("Seq", "Sequence"), BuildEnumCombo(StaticEnum<EEarth4DSequence>(),
+		[this]{ const FEarth4DTask* T = GetSelectedTask(); return T ? (int32)T->Sequence : 0; },
+		[this](int32 V){ if (UEarth4DSubsystem* S = ResolveSubsystem()) S->SetTaskSequence(SelectedTaskId, (EEarth4DSequence)V); }));
 
 	AddRow(LOCTEXT("Dur", "Duration (days)"),
 		SNew(SSpinBox<float>).MinValue(1).MaxValue(100000).Delta(1)
@@ -59,11 +65,53 @@ void SEarth4DGanttPanel::Construct(const FArguments&)
 	AddRow(LOCTEXT("Distance", "Distance (m)"),
 		SNew(SSpinBox<float>).MinValue(0).MaxValue(100000).Delta(1)
 		.Value_Lambda([this]{ const FEarth4DTask* T = GetSelectedTask(); return T ? T->Distance : 0.f; })
-		.OnValueChanged_Lambda([this](float V){ if (UEarth4DSubsystem* S = ResolveSubsystem()) if (FEarth4DTask* T = S->Schedule ? S->Schedule->FindTask(SelectedTaskId) : nullptr) { T->Distance = V; S->EvaluateAndApply(S->CurrentDay); } }));
+		.OnValueChanged_Lambda([this](float V){ if (UEarth4DSubsystem* S = ResolveSubsystem()) S->SetTaskDistance(SelectedTaskId, V); }));
 	AddRow(LOCTEXT("Overlap", "Overlap (0..1)"),
 		SNew(SSpinBox<float>).MinValue(0).MaxValue(1).Delta(0.05f)
 		.Value_Lambda([this]{ const FEarth4DTask* T = GetSelectedTask(); return T ? T->Overlap : 0.f; })
-		.OnValueChanged_Lambda([this](float V){ if (UEarth4DSubsystem* S = ResolveSubsystem()) if (FEarth4DTask* T = S->Schedule ? S->Schedule->FindTask(SelectedTaskId) : nullptr) { T->Overlap = V; S->EvaluateAndApply(S->CurrentDay); } }));
+		.OnValueChanged_Lambda([this](float V){ if (UEarth4DSubsystem* S = ResolveSubsystem()) S->SetTaskOverlap(SelectedTaskId, V); }));
+
+	// Task display colour.
+	AddRow(LOCTEXT("TaskColour", "Task colour"),
+		SNew(SColorBlock)
+		.Color_Lambda([this]{ const FEarth4DTask* T = GetSelectedTask(); return T ? T->Color : FLinearColor::Gray; })
+		.Size(FVector2D(48, 16))
+		.OnMouseButtonDown_Lambda([this](const FGeometry&, const FPointerEvent&) -> FReply
+		{
+			const FEarth4DTask* T = GetSelectedTask();
+			FColorPickerArgs Args; Args.bUseAlpha = false;
+			Args.InitialColor = T ? T->Color : FLinearColor::Gray;
+			Args.OnColorCommitted = FOnLinearColorValueChanged::CreateLambda([this](FLinearColor C)
+				{ if (UEarth4DSubsystem* S = ResolveSubsystem()) S->SetTaskColor(SelectedTaskId, C); });
+			OpenColorPicker(Args);
+			return FReply::Handled();
+		}));
+
+	// Action-glow (emissive while animating): checkbox enables, swatch sets colour.
+	AddRow(LOCTEXT("Glow", "Action glow"),
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+		[
+			SNew(SCheckBox)
+			.IsChecked_Lambda([this]{ const FEarth4DTask* T = GetSelectedTask(); return (T && T->bHasGlowColor) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+			.OnCheckStateChanged_Lambda([this](ECheckBoxState St){ const FEarth4DTask* T = GetSelectedTask(); if (UEarth4DSubsystem* S = ResolveSubsystem()) if (T) S->SetTaskGlowColor(SelectedTaskId, T->GlowColor, St == ECheckBoxState::Checked); })
+		]
+		+ SHorizontalBox::Slot().FillWidth(1).Padding(6, 0).VAlign(VAlign_Center)
+		[
+			SNew(SColorBlock)
+			.Color_Lambda([this]{ const FEarth4DTask* T = GetSelectedTask(); return T ? T->GlowColor : FLinearColor::Green; })
+			.Size(FVector2D(48, 16))
+			.OnMouseButtonDown_Lambda([this](const FGeometry&, const FPointerEvent&) -> FReply
+			{
+				const FEarth4DTask* T = GetSelectedTask();
+				FColorPickerArgs Args; Args.bUseAlpha = false;
+				Args.InitialColor = T ? T->GlowColor : FLinearColor::Green;
+				Args.OnColorCommitted = FOnLinearColorValueChanged::CreateLambda([this](FLinearColor C)
+					{ if (UEarth4DSubsystem* S = ResolveSubsystem()) S->SetTaskGlowColor(SelectedTaskId, C, true); });
+				OpenColorPicker(Args);
+				return FReply::Handled();
+			})
+		]);
 
 	ChildSlot
 	[

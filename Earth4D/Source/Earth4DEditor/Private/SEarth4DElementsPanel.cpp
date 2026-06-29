@@ -8,7 +8,12 @@
 #include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SSearchBox.h"
+#include "Widgets/Input/SComboBox.h"
+#include "Widgets/Input/SComboButton.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "Misc/MessageDialog.h"
+#include "Earth4DSchedule.h"
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Colors/SColorBlock.h"
@@ -97,6 +102,41 @@ void SEarth4DElementsPanel::Construct(const FArguments& InArgs)
 			})
 		]);
 
+	// Per-element stagger delay (shifts this element's animation window).
+	AddRow(LOCTEXT("StaggerD", "Stagger delay (days)"), MakeSpin(
+		[this]{ return GetEditTemplate().StaggerDelay; },
+		[this](float V){ ApplyEditField([V](FEarth4DObjectEdit& E){ E.StaggerDelay = FMath::Max(0.f, V); }); }, 0.f, 100000, 0.1f));
+
+	// Per-element animation override (CMBuilder-style): checkbox enables, combo picks.
+	AddRow(LOCTEXT("StyleOv", "Style override"),
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+		[
+			SNew(SCheckBox)
+			.IsChecked_Lambda([this]{ return GetEditTemplate().bOverrideStyle ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+			.OnCheckStateChanged_Lambda([this](ECheckBoxState S){ const bool b = (S == ECheckBoxState::Checked); ApplyEditField([b](FEarth4DObjectEdit& E){ E.bOverrideStyle = b; }); })
+		]
+		+ SHorizontalBox::Slot().FillWidth(1).Padding(6, 0)
+		[
+			MakeEnumCombo(StaticEnum<EEarth4DAnimStyle>(),
+				[this]{ return (int32)GetEditTemplate().OverrideStyle; },
+				[this](int32 V){ ApplyEditField([V](FEarth4DObjectEdit& E){ E.OverrideStyle = (EEarth4DAnimStyle)V; E.bOverrideStyle = true; }); })
+		]);
+	AddRow(LOCTEXT("DirOv", "Direction override"),
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+		[
+			SNew(SCheckBox)
+			.IsChecked_Lambda([this]{ return GetEditTemplate().bOverrideDirection ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+			.OnCheckStateChanged_Lambda([this](ECheckBoxState S){ const bool b = (S == ECheckBoxState::Checked); ApplyEditField([b](FEarth4DObjectEdit& E){ E.bOverrideDirection = b; }); })
+		]
+		+ SHorizontalBox::Slot().FillWidth(1).Padding(6, 0)
+		[
+			MakeEnumCombo(StaticEnum<EEarth4DDirection>(),
+				[this]{ return (int32)GetEditTemplate().OverrideDirection; },
+				[this](int32 V){ ApplyEditField([V](FEarth4DObjectEdit& E){ E.OverrideDirection = (EEarth4DDirection)V; E.bOverrideDirection = true; }); })
+		]);
+
 	ChildSlot
 	[
 		SNew(SVerticalBox)
@@ -106,6 +146,20 @@ void SEarth4DElementsPanel::Construct(const FArguments& InArgs)
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
 			[ SNew(STextBlock).Text(LOCTEXT("Models", "MODELS")).ColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.55f, 0.62f))) ]
+			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0)
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("SaveSet", "Save set"))
+				.ToolTipText(LOCTEXT("SaveSetTip", "Save the current selection as a reusable, named selection set."))
+				.OnClicked(this, &SEarth4DElementsPanel::OnSaveSelectionSet)
+			]
+			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0)
+			[
+				SNew(SComboButton)
+				.ToolTipText(LOCTEXT("SetsTip", "Apply a saved selection set."))
+				.ButtonContent()[ SNew(STextBlock).Text(LOCTEXT("Sets", "Sets")) ]
+				.OnGetMenuContent(this, &SEarth4DElementsPanel::BuildSelectionSetsMenu)
+			]
 			+ SHorizontalBox::Slot().AutoWidth()
 			[
 				SNew(SButton)
@@ -256,6 +310,80 @@ FReply SEarth4DElementsPanel::OnFilterCommitted()
 {
 	RefreshList();
 	return FReply::Handled();
+}
+
+FReply SEarth4DElementsPanel::OnSaveSelectionSet()
+{
+	UEarth4DSubsystem* Sub = ResolveSub();
+	if (Sub && Sub->SelectedElementIds.Num() > 0)
+	{
+		// Name the set after the count + first element for a quick, unique default.
+		FString FirstName = Sub->SelectedElementIds[0];
+		if (Sub->Schedule) if (const FEarth4DElement* E = Sub->Schedule->FindElement(FirstName)) FirstName = E->DisplayName;
+		const FString Name = FString::Printf(TEXT("Set: %s +%d"), *FirstName, Sub->SelectedElementIds.Num() - 1);
+		FString SetId;
+		Sub->SaveSelectionSet(Name, Sub->SelectedElementIds, SetId);
+	}
+	return FReply::Handled();
+}
+
+TSharedRef<SWidget> SEarth4DElementsPanel::BuildSelectionSetsMenu()
+{
+	FMenuBuilder Menu(/*bCloseAfterSelection=*/true, nullptr);
+	UEarth4DSubsystem* Sub = ResolveSub();
+	if (Sub && Sub->Schedule && Sub->Schedule->SelectionSets.Num() > 0)
+	{
+		for (const FEarth4DSelectionSet& S : Sub->Schedule->SelectionSets)
+		{
+			const FString SetId = S.Id;
+			const FText Label = FText::FromString(FString::Printf(TEXT("%s  (%d)"), *S.Name, S.ObjectIds.Num()));
+			Menu.AddMenuEntry(Label, FText::GetEmpty(), FSlateIcon(), FUIAction(FExecuteAction::CreateLambda(
+				[this, SetId]{ if (UEarth4DSubsystem* S2 = ResolveSub()) S2->ApplySelectionSet(SetId); })));
+		}
+		Menu.AddMenuSeparator();
+		for (const FEarth4DSelectionSet& S : Sub->Schedule->SelectionSets)
+		{
+			const FString SetId = S.Id;
+			Menu.AddMenuEntry(FText::FromString(FString::Printf(TEXT("Delete '%s'"), *S.Name)), FText::GetEmpty(), FSlateIcon(),
+				FUIAction(FExecuteAction::CreateLambda([this, SetId]{ if (UEarth4DSubsystem* S2 = ResolveSub()) S2->DeleteSelectionSet(SetId); })));
+		}
+	}
+	else
+	{
+		Menu.AddMenuEntry(LOCTEXT("NoSets", "(no saved sets)"), FText::GetEmpty(), FSlateIcon(), FUIAction());
+	}
+	return Menu.MakeWidget();
+}
+
+TSharedRef<SWidget> SEarth4DElementsPanel::MakeEnumCombo(UEnum* Enum, TFunction<int32()> Get, TFunction<void(int32)> Set)
+{
+	TSharedPtr<TArray<TSharedPtr<FString>>> Options = MakeShared<TArray<TSharedPtr<FString>>>();
+	const int32 Count = Enum->NumEnums() - 1; // drop the implicit _MAX
+	for (int32 i = 0; i < Count; ++i)
+		Options->Add(MakeShared<FString>(Enum->GetDisplayNameTextByIndex(i).ToString()));
+	ComboSources.Add(Options); // keepalive
+
+	TWeakPtr<TArray<TSharedPtr<FString>>> WeakOpts = Options;
+	return SNew(SComboBox<TSharedPtr<FString>>)
+		.OptionsSource(Options.Get())
+		.OnGenerateWidget_Lambda([](TSharedPtr<FString> In){ return SNew(STextBlock).Text(FText::FromString(*In)); })
+		.OnSelectionChanged_Lambda([Set, WeakOpts](TSharedPtr<FString> In, ESelectInfo::Type Info)
+		{
+			if (Info == ESelectInfo::Direct || !In.IsValid()) return;
+			if (TSharedPtr<TArray<TSharedPtr<FString>>> Opts = WeakOpts.Pin())
+				Set(Opts->IndexOfByKey(In));
+		})
+		[
+			SNew(STextBlock).Text_Lambda([Get, WeakOpts]()
+			{
+				if (TSharedPtr<TArray<TSharedPtr<FString>>> Opts = WeakOpts.Pin())
+				{
+					const int32 V = Get();
+					if (Opts->IsValidIndex(V)) return FText::FromString(*(*Opts)[V]);
+				}
+				return FText::GetEmpty();
+			})
+		];
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -44,6 +44,7 @@ FEarth4DScheduleData UEarth4DSchedule::CaptureData() const
 	D.Stages = Stages;
 	D.Tasks = Tasks;
 	D.Elements = Elements;
+	D.SelectionSets = SelectionSets;
 	return D;
 }
 
@@ -54,4 +55,5 @@ void UEarth4DSchedule::RestoreData(const FEarth4DScheduleData& D)
 	Stages = D.Stages;
 	Tasks = D.Tasks;
 	Elements = D.Elements;
+	SelectionSets = D.SelectionSets;
 }
