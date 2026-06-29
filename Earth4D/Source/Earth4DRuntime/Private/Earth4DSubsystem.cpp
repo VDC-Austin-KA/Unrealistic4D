@@ -35,7 +35,7 @@
 #include "EditorViewportClient.h"
 #include "LevelEditorViewport.h"
 #include "Exporters/Exporter.h"        // UExporter::RunAssetExportTask (glTF export)
-#include "Engine/AssetExportTask.h"
+#include "AssetExportTask.h"
 #endif
 
 void UEarth4DSubsystem::Initialize(FSubsystemCollectionBase& Collection)

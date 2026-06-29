@@ -95,9 +95,17 @@
 			"Name": "UAF",
 			"Enabled": true,
 			"Optional": true
+		},
+		{
+			"Name": "HyperAIStudio",
+			"Enabled": true
+		},
+		{
+			"Name": "EditorTests",
+			"Enabled": true
 		}
 	],
 	"AdditionalPluginDirectories": [
-		".."
+		"../"
 	]
 }
