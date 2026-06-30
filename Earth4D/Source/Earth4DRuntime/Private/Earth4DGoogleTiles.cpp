@@ -1,6 +1,7 @@
 // Copyright Earth4D. Licensed for project use.
 #include "Earth4DGoogleTiles.h"
 #include "Earth4DSite.h"
+#include "Earth4DSubsystem.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpResponse.h"
 #include "Dom/JsonObject.h"
@@ -133,6 +134,7 @@ void AEarth4DGoogleTiles::BeginStreaming()
 
 	bStreaming = true;
 	bConnected = false;
+	bFramedRegionOnConnect = false;
 	SessionToken.Reset();
 
 	// Prefer a direct Google key; otherwise resolve the Google tileset via the ion token.
@@ -226,6 +228,13 @@ void AEarth4DGoogleTiles::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	// The tiles are georeferenced into WORLD space through the Site (each tile mesh carries
+	// its own world transform), so this actor is only their owner — it must stay at identity.
+	// Dragging/rotating it in the editor would spin the entire globe about the site pivot
+	// (the "planet on a stick" trap). Navigate the CAMERA, not the Earth — so pin it here.
+	if (!GetActorTransform().Equals(FTransform::Identity, 0.01))
+		SetActorTransform(FTransform::Identity);
+
 	// Self-start: as soon as we have a site + a credential, begin streaming — in the editor
 	// viewport and at runtime alike. BeginStreaming() flips bStreaming so this runs once.
 	if (!bStreaming)
@@ -234,6 +243,16 @@ void AEarth4DGoogleTiles::Tick(float DeltaSeconds)
 		return;
 	}
 	if (!Root.IsValid() || !Site) return;
+
+	// Once the root tileset is connected, frame the project region a single time so the view
+	// starts looking at the site (matches the web app's flyToRegion() on 'load-tile-set').
+	if (bConnected && !bFramedRegionOnConnect)
+	{
+		bFramedRegionOnConnect = true;
+		if (UWorld* W = GetWorld())
+			if (UEarth4DSubsystem* Sub = W->GetSubsystem<UEarth4DSubsystem>())
+				Sub->FrameRegion();
+	}
 
 	++FrameCounter;
 
@@ -621,6 +640,20 @@ void AEarth4DGoogleTiles::DecodeAndBuild(TSharedPtr<FTile> Tile)
 	PMC->bUseAsyncCooking = false;
 	PMC->SetMobility(EComponentMobility::Movable);
 
+	// Per-tile precision anchor. The whole-globe tileset spans thousands of km; if every
+	// vertex is stored as an absolute site-local position, a tile far from the origin gets
+	// float32 vertices in the 1e7–1e9 cm range and the mesh collapses/culls — only tiles
+	// within a few km of the origin survive (the bug that made the globe "render nothing"
+	// from afar and "hang km below"). Instead we place the COMPONENT at the tile centre (a
+	// double world position) and store each vertex RELATIVE to it, so the render buffer's
+	// float32 verts stay small and precise anywhere on Earth. This is the standard large-
+	// world pattern and is what lets the full georeferenced globe render — mirroring the web
+	// app, where each streamed tile is its own transformed node with local geometry.
+	const FVector TileAnchorUnreal = Tile->Bounds.bValid
+		? Site->EcefMetersToUnreal(Tile->Bounds.CenterEcef)
+		: FVector::ZeroVector;
+	PMC->SetWorldLocation(TileAnchorUnreal);
+
 	// Combined glTF-local → ECEF: Y-up→Z-up first, then the tile's accumulated transform.
 	const FMatrix LocalToEcef = GYupToZup * Tile->ToEcef;
 
@@ -643,7 +676,8 @@ void AEarth4DGoogleTiles::DecodeAndBuild(TSharedPtr<FTile> Tile)
 		{
 			const FVector Local(P[i].X, P[i].Y, P[i].Z);
 			const FVector Ecef = NodeToEcef.TransformPosition(Local);
-			Positions.Add(Site->EcefMetersToUnreal(Ecef));
+			// Store relative to the tile anchor (component world location) — see note above.
+			Positions.Add(Site->EcefMetersToUnreal(Ecef) - TileAnchorUnreal);
 			if (Nrm.IsValidIndex(i))
 			{
 				const FVector NLocal(Nrm[i].X, Nrm[i].Y, Nrm[i].Z);
@@ -669,19 +703,33 @@ void AEarth4DGoogleTiles::DecodeAndBuild(TSharedPtr<FTile> Tile)
 		// Apply the primitive's glTF base-colour image (the satellite texture) via a dynamic
 		// instance of the unlit tile material; fall back to the plain material otherwise.
 		UMaterialInterface* SectionMat = TileMaterial;
-		if (TileMaterial && Asset.Materials.IsValidIndex(Prim.MaterialIndex))
+		const int32 MatIdx = Prim.MaterialIndex;
+		const bool bMatOk = Asset.Materials.IsValidIndex(MatIdx);
+		int32 TexIdx = INDEX_NONE; int32 ImgBytes = 0; bool bHadUV = (UV.Num() > 0); bool bDecoded = false;
+		if (TileMaterial && bMatOk)
 		{
-			const int32 TexIdx = Asset.Materials[Prim.MaterialIndex].BaseColor.TextureIndex;
+			TexIdx = Asset.Materials[MatIdx].BaseColor.TextureIndex;
 			if (Asset.Textures.IsValidIndex(TexIdx))
 			{
 				const GLTF::FImage& Img = Asset.Textures[TexIdx].Source;
-				if (UTexture2D* Tex = DecodeImageToTexture(Img.Data, (int32)Img.DataByteLength))
+				ImgBytes = (int32)Img.DataByteLength;
+				if (UTexture2D* Tex = (Img.Data ? DecodeImageToTexture(Img.Data, ImgBytes) : nullptr))
 				{
 					UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(TileMaterial, this);
 					MID->SetTextureParameterValue(TEXT("BaseColorTex"), Tex);
 					SectionMat = MID;
+					bDecoded = true;
 				}
 			}
+		}
+		// One-shot diagnostics (first few primitives) to pinpoint why imagery is/ isn't applied.
+		static int32 GTexDiag = 0;
+		if (GTexDiag < 8)
+		{
+			++GTexDiag;
+			UE_LOG(LogTemp, Warning, TEXT("[Earth4D tile-tex] mats=%d texs=%d imgs=%d | primMat=%d matOk=%d texIdx=%d bytes=%d uvVerts=%d decoded=%d baseMat=%s"),
+				Asset.Materials.Num(), Asset.Textures.Num(), Asset.Images.Num(), MatIdx, bMatOk ? 1 : 0, TexIdx, ImgBytes, UV.Num(), bDecoded ? 1 : 0,
+				TileMaterial ? *TileMaterial->GetName() : TEXT("<null>"));
 		}
 		if (SectionMat) PMC->SetMaterial(SectionIndex, SectionMat);
 		++SectionIndex;
@@ -724,6 +772,10 @@ UTexture2D* AEarth4DGoogleTiles::DecodeImageToTexture(const uint8* Data, int32 N
 	if (Tex)
 	{
 		Tex->SRGB = true;
+		// Runtime-decoded transient textures have no on-disk bulk data, so the texture
+		// streamer can only ever serve the lowest resident mip in-world — tiles then look
+		// flat/untextured even though the data is valid. Pin all mips resident.
+		Tex->NeverStream = true;
 		Tex->Filter = TextureFilter::TF_Trilinear;
 		Tex->AddressX = TextureAddress::TA_Clamp;
 		Tex->AddressY = TextureAddress::TA_Clamp;
@@ -777,6 +829,36 @@ void AEarth4DGoogleTiles::EvictStale()
 		const int32 ToDrop = Residents.Num() - MaxLoadedTiles;
 		for (int32 i = 0; i < ToDrop; ++i) DestroyTileMesh(*Residents[i]);
 	}
+
+	// Bound the TREE itself, not just resident meshes. Google's tileset is planet-scale
+	// and FetchExternalTileset keeps splicing child tilesets into the tree as the camera
+	// moves; evicting meshes alone leaves the FTile nodes (and their parsed data) resident
+	// forever, so a long editor session grows unbounded and OOMs (was crashing in
+	// SelectTile after ~27 min). Drop resolved external-tileset subtrees that haven't been
+	// selected for a long while; they re-fetch on demand if the camera returns. Runs LAST
+	// so the raw FTile* in Evictable/Residents above are never used after their backing
+	// nodes are freed here.
+	const int64 PruneCutoff = FrameCounter - FMath::Max(60, EvictAfterFrames * 4);
+	TFunction<void(const TSharedPtr<FTile>&)> KillSubtreeMeshes = [&](const TSharedPtr<FTile>& N)
+	{
+		if (!N.IsValid()) return;
+		DestroyTileMesh(*N);
+		for (const TSharedPtr<FTile>& C : N->Children) KillSubtreeMeshes(C);
+	};
+	TFunction<void(const TSharedPtr<FTile>&)> Prune = [&](const TSharedPtr<FTile>& T)
+	{
+		if (!T.IsValid()) return;
+		for (const TSharedPtr<FTile>& C : T->Children) Prune(C);
+		if (T.Get() != Root.Get() && T->bContentIsExternalTileset && T->bChildrenResolved
+		    && T->Children.Num() > 0 && T->LastSelectedFrame < PruneCutoff)
+		{
+			for (const TSharedPtr<FTile>& C : T->Children) KillSubtreeMeshes(C);
+			T->Children.Reset();
+			T->bChildrenResolved = false;
+			if (T->State != EState::Ready) T->State = EState::Unloaded; // allow re-resolve
+		}
+	};
+	Prune(Root);
 }
 
 void AEarth4DGoogleTiles::DestroyTileMesh(FTile& Tile)

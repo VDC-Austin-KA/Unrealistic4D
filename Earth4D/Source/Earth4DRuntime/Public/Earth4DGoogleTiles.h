@@ -140,6 +140,7 @@ private:
 	int64   FrameCounter = 0;
 	int32   InFlightRequests = 0;
 	bool    bReplacePlacement = false; // origin changed → re-place resident meshes
+	bool    bFramedRegionOnConnect = false; // one-shot: frame the site once tiles connect (web app's flyToRegion)
 
 	// Per-frame view info.
 	bool GetViewPoint(FVector& OutCamLocation, double& OutSsePixelsPerMeter) const;
