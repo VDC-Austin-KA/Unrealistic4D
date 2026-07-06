@@ -1,0 +1,20 @@
+{
+	"generatedAt": "2026-06-30T01:53:12.570Z",
+	"ready": true,
+	"state": "Ready",
+	"endpoint": "http://127.0.0.1:8000/mcp",
+	"unrealMcpModuleAvailable": true,
+	"unrealMcpSettingsConfigured": true,
+	"requiredPluginsReady": true,
+	"serverRunning": true,
+	"portListening": true,
+	"toolsListReachable": true,
+	"agentFilesReady": true,
+	"configuredPort": 8000,
+	"activePort": 8000,
+	"registeredToolCount": 3,
+	"probeToolCount": 3,
+	"configuredAgentCount": 1,
+	"supportedAgentCount": 5,
+	"probeMessage": "tools/list reachable with 3 advertised tools."
+}
