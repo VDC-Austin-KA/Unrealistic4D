@@ -1,0 +1,30 @@
+{
+	"mcpServers":
+	{
+		"unreal-mcp":
+		{
+			"type": "http",
+			"url": "http://127.0.0.1:8000/mcp"
+		},
+		"hyper-ue-mcp":
+		{
+			"command": "python",
+			"args": [
+				"D:/EPIC/UE_5.8/Engine/Plugins/Marketplace/HyperAISb3f9f07c5a33V1/Resources/MCPServers/HyperUEMCPFull/RuntimeSource/hyper_ue_mcp_stdio.py",
+				"--manifest",
+				"D:/EPIC/UE_5.8/Engine/Plugins/Marketplace/HyperAISb3f9f07c5a33V1/Resources/MCPServers/HyperUEMCPFull/RuntimeSource/tool_manifest.json",
+				"--config",
+				"D:/EPIC/UE_5.8/Engine/Plugins/Marketplace/HyperAISb3f9f07c5a33V1/Resources/MCPServers/HyperUEMCPFull/RuntimeSource/config.json"
+			]
+		},
+		"hyper-knowledge-mcp":
+		{
+			"command": "python",
+			"args": [
+				"D:/EPIC/UE_5.8/Engine/Plugins/Marketplace/HyperAISb3f9f07c5a33V1/Resources/MCPServers/Shared/mcp_stdio_server.py",
+				"--manifest",
+				"D:/EPIC/UE_5.8/Engine/Plugins/Marketplace/HyperAISb3f9f07c5a33V1/Resources/MCPServers/HyperKnowledgeMCP/manifest.json"
+			]
+		}
+	}
+}

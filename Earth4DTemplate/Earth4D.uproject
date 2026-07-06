@@ -1,8 +1,8 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "5.8",
+	"EngineAssociation": "5.7",
 	"Category": "AEC",
-	"Description": "Earth4D — 4D construction sequencing over Google Photorealistic 3D Tiles with natural-language (Claude) control.",
+	"Description": "Earth4D - 4D construction sequencing over Google Photorealistic 3D Tiles with natural-language (Claude) control.",
 	"Modules": [
 		{
 			"Name": "Earth4DTemplate",
@@ -11,101 +11,30 @@
 		}
 	],
 	"Plugins": [
-		{
-			"Name": "Earth4D",
-			"Enabled": true
-		},
-		{
-			"Name": "DatasmithContent",
-			"Enabled": true
-		},
-		{
-			"Name": "DatasmithImporter",
-			"Enabled": true
-		},
-		{
-			"Name": "DatasmithRuntime",
-			"Enabled": true
-		},
-		{
-			"Name": "GLTFExporter",
-			"Enabled": true
-		},
-		{
-			"Name": "ModelContextProtocol",
-			"Enabled": true,
-			"Optional": true
-		},
-		{
-			"Name": "MCPClientToolset",
-			"Enabled": true,
-			"Optional": true
-		},
-		{
-			"Name": "AllToolsets",
-			"Enabled": true,
-			"Optional": true
-		},
-		{
-			"Name": "EditorToolset",
-			"Enabled": true,
-			"Optional": true
-		},
-		{
-			"Name": "PythonFoundationPackages",
-			"Enabled": true,
-			"Optional": true
-		},
-		{
-			"Name": "PluginToolset",
-			"Enabled": true,
-			"Optional": true
-		},
-		{
-			"Name": "StateTreeToolset",
-			"Enabled": true,
-			"Optional": true
-		},
-		{
-			"Name": "NullStaticMeshCleaner",
-			"Enabled": true,
-			"Optional": true
-		},
-		{
-			"Name": "DualSenseGamepadSupport",
-			"Enabled": true,
-			"Optional": true
-		},
-		{
-			"Name": "SliceMesh",
-			"Enabled": true,
-			"Optional": true
-		},
-		{
-			"Name": "TypeTween",
-			"Enabled": true,
-			"Optional": true,
-			"MarketplaceURL": "https://www.fab.com/listings/f09a96e6-04e3-4aff-aa96-556774bbdad4"
-		},
-		{
-			"Name": "DatasmithInterchange",
-			"Enabled": true
-		},
-		{
-			"Name": "UAF",
-			"Enabled": true,
-			"Optional": true
-		},
-		{
-			"Name": "HyperAIStudio",
-			"Enabled": true
-		},
-		{
-			"Name": "EditorTests",
-			"Enabled": true
-		}
+		{"Name": "Earth4D", "Enabled": true},
+		{"Name": "CesiumForUnreal", "Enabled": true},
+		{"Name": "DatasmithContent", "Enabled": true},
+		{"Name": "DatasmithImporter", "Enabled": true},
+		{"Name": "DatasmithRuntime", "Enabled": true},
+		{"Name": "GLTFExporter", "Enabled": true},
+		{"Name": "ModelContextProtocol", "Enabled": true, "Optional": true},
+		{"Name": "MCPClientToolset", "Enabled": true, "Optional": true},
+		{"Name": "AllToolsets", "Enabled": true, "Optional": true},
+		{"Name": "EditorToolset", "Enabled": true, "Optional": true},
+		{"Name": "PythonFoundationPackages", "Enabled": true, "Optional": true},
+		{"Name": "PluginToolset", "Enabled": true, "Optional": true},
+		{"Name": "StateTreeToolset", "Enabled": true, "Optional": true},
+		{"Name": "NullStaticMeshCleaner", "Enabled": true, "Optional": true},
+		{"Name": "DualSenseGamepadSupport", "Enabled": true, "Optional": true},
+		{"Name": "SliceMesh", "Enabled": true, "Optional": true},
+		{"Name": "TypeTween", "Enabled": true, "Optional": true, "MarketplaceURL": "https://www.fab.com/listings/f09a96e6-04e3-4aff-aa96-556774bbdad4"},
+		{"Name": "DatasmithInterchange", "Enabled": true},
+		{"Name": "UAF", "Enabled": true, "Optional": true},
+		{"Name": "HyperAIStudio", "Enabled": true, "Optional": true},
+		{"Name": "EditorTests", "Enabled": true},
+		{"Name": "MetaRoad", "Enabled": true},
+		{"Name": "RemoteControl", "Enabled": true},
+		{"Name": "RemoteControlComponents", "Enabled": true}
 	],
-	"AdditionalPluginDirectories": [
-		"../"
-	]
+	"AdditionalPluginDirectories": []
 }

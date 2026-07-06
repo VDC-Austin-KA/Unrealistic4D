@@ -14,6 +14,12 @@ Saved/
 *.xcodeproj/
 *.xcworkspace/
 
+# ---- Cesium for Unreal (third-party binary plugin, ~hundreds of MB) ----
+# Install from https://github.com/CesiumGS/cesium-unreal/releases (UE 5.7 build,
+# CesiumForUnreal-57-*.zip) into Earth4DTemplate/Plugins/CesiumForUnreal/ after
+# cloning. Build with EARTH4D_FORCE_CESIUM=1 to enable the Cesium backend.
+Earth4DTemplate/Plugins/CesiumForUnreal/
+
 # ---- Marketplace asset pack ----
 # Construction_VOL1 is an Epic Marketplace pack (~586 MB, contains a >100 MB file).
 # Not redistributed here; install it from the Epic Marketplace into
@@ -29,6 +35,11 @@ Earth4DTemplate/Config/DefaultEarth4D.ini
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ---- Cesium request cache (large SQLite files) ----
+Earth4DTemplate/cesium-request-cache.sqlite*
+*.sqlite-shm
+*.sqlite-wal
 
 # ---- Claude Code session exports ----
 *.txmmm
