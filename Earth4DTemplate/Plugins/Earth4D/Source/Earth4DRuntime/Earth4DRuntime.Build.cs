@@ -29,14 +29,15 @@ public class Earth4DRuntime : ModuleRules
 			"RenderCore",               // RHI vertex formats used by the procedural mesh
 		});
 
-		// Cesium for Unreal is OPTIONAL and OFF BY DEFAULT. As of UE 5.8 the Cesium
-		// plugin is not yet released, so building against it (or even auto-detecting a
-		// stale install for an older engine) breaks the build. We therefore default to
-		// the Cesium-free path — AEarth4DSite uses its own WGS84 ENU georeferencing and
-		// the native Google Map Tiles loader supplies the basemap. Opt IN explicitly,
-		// only once Cesium ships for your engine version, by setting the environment
-		// variable EARTH4D_FORCE_CESIUM=1 before generating project files / building.
-		bool bHasCesium = (Environment.GetEnvironmentVariable("EARTH4D_FORCE_CESIUM") == "1");
+		// Cesium for Unreal is ON BY DEFAULT. Now that the Cesium plugin has shipped
+		// for UE 5.8, AEarth4DSite uses Cesium's georeferencing + Google Photorealistic
+		// 3D Tiles as the primary basemap path (the code behind WITH_EARTH4D_CESIUM).
+		// The native Cesium-free Google Tiles loader remains as a fallback: opt OUT by
+		// setting EARTH4D_DISABLE_CESIUM=1 before generating project files / building
+		// (e.g. on an engine version that doesn't have the Cesium plugin installed).
+		// EARTH4D_FORCE_CESIUM=1 is still honoured as an explicit opt-in for symmetry.
+		bool bDisableCesium = (Environment.GetEnvironmentVariable("EARTH4D_DISABLE_CESIUM") == "1");
+		bool bHasCesium = !bDisableCesium;
 		if (bHasCesium)
 		{
 			PrivateDependencyModuleNames.Add("CesiumRuntime");

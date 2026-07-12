@@ -44,10 +44,12 @@ skill encodes the full preflight):
    `SwarmInterface`) and the editor refuses to launch. Verify the registry key
    `HKLM\SOFTWARE\WOW6432Node\Microsoft\Microsoft SDKs\NETFXSDK\4.8` exists; if not,
    install `ndp48-devpack-enu.exe`.
-3. **Cesium is OFF by default** (`WITH_EARTH4D_CESIUM=0`). Do **not** enable it on
-   UE 5.8 — it isn't released for 5.8 and a stale install breaks the build. Only set
-   `EARTH4D_FORCE_CESIUM=1` (before generating project files) once Cesium ships for
-   the engine version. `Target.cs` already pins `BuildSettingsVersion.V7`.
+3. **Cesium is ON by default** (`WITH_EARTH4D_CESIUM=1`). Cesium for Unreal has
+   shipped for UE 5.8 and is the primary basemap path; `CesiumForUnreal` is enabled
+   in `Earth4D.uproject` and `CesiumRuntime` is linked by `Earth4DRuntime.Build.cs`.
+   To build the Cesium-free fallback instead (e.g. an engine without the plugin), set
+   `EARTH4D_DISABLE_CESIUM=1` before generating project files. `Target.cs` pins
+   `BuildSettingsVersion.V7` (required on 5.8; V6 fails the shared-build-env check).
 4. **Editor must be closed to compile** — it locks the module DLLs. Use
    `Build.bat /close` (or `BuildAndRun.bat`).
 

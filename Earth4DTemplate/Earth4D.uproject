@@ -12,7 +12,7 @@
 	],
 	"Plugins": [
 		{"Name": "Earth4D", "Enabled": true},
-		{"Name": "CesiumForUnreal", "Enabled": true, "Optional": true},
+		{"Name": "CesiumForUnreal", "Enabled": true},
 		{"Name": "DatasmithContent", "Enabled": true},
 		{"Name": "DatasmithImporter", "Enabled": true},
 		{"Name": "DatasmithRuntime", "Enabled": true},
