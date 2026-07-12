@@ -35,6 +35,8 @@ for %%A in (%*) do (
   ) else if /I "%%~A"=="/nopause" ( set "DO_NOPAUSE=1"
   ) else ( set "UE_ROOT=%%~A" )
 )
+REM Strip a trailing backslash — "D:\EPIC\UE_5.8\" would escape the closing quote.
+if defined UE_ROOT if "%UE_ROOT:~-1%"=="\" set "UE_ROOT=%UE_ROOT:~0,-1%"
 
 set "PROJDIR=%~dp0..\Earth4DTemplate"
 set "UPROJECT=%PROJDIR%\Earth4D.uproject"

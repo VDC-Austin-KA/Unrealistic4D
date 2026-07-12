@@ -8,7 +8,7 @@ public class Earth4DTemplateTarget : TargetRules
 	public Earth4DTemplateTarget(TargetInfo Target) : base(Target)
 	{
 		Type = TargetType.Game;
-		DefaultBuildSettings = BuildSettingsVersion.V6; // V6 = newest on UE 5.7 (V7 is 5.8-only)
+		DefaultBuildSettings = BuildSettingsVersion.V7;
 		IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
 		ExtraModuleNames.Add("Earth4DTemplate");
 	}
