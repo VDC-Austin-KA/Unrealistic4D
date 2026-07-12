@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "5.7",
+	"EngineAssociation": "5.8",
 	"Category": "AEC",
 	"Description": "Earth4D - 4D construction sequencing over Google Photorealistic 3D Tiles with natural-language (Claude) control.",
 	"Modules": [
@@ -12,7 +12,7 @@
 	],
 	"Plugins": [
 		{"Name": "Earth4D", "Enabled": true},
-		{"Name": "CesiumForUnreal", "Enabled": true},
+		{"Name": "CesiumForUnreal", "Enabled": true, "Optional": true},
 		{"Name": "DatasmithContent", "Enabled": true},
 		{"Name": "DatasmithImporter", "Enabled": true},
 		{"Name": "DatasmithRuntime", "Enabled": true},
