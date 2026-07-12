@@ -151,8 +151,15 @@ if ($EnableCesium) {
 # 4. Deploy plugin files.
 # ---------------------------------------------------------------------------
 Write-Step "Deploying Earth4D plugin ($Scope scope)"
-$pluginSrc = Join-Path $repoRoot "Earth4D"
-if (-not (Test-Path (Join-Path $pluginSrc "Earth4D.uplugin"))) { Fail "Plugin source not found at $pluginSrc" }
+# The plugin source of truth is the copy the template project builds against
+# (Earth4DTemplate\Plugins\Earth4D). A legacy top-level Earth4D\ is used as a
+# fallback for older checkouts that still carry it.
+$pluginSrc = Join-Path $repoRoot "Earth4DTemplate\Plugins\Earth4D"
+if (-not (Test-Path (Join-Path $pluginSrc "Earth4D.uplugin"))) {
+    $legacy = Join-Path $repoRoot "Earth4D"
+    if (Test-Path (Join-Path $legacy "Earth4D.uplugin")) { $pluginSrc = $legacy }
+    else { Fail "Plugin source not found at $pluginSrc" }
+}
 
 $uproject = $null
 if ($Scope -eq "engine") {
